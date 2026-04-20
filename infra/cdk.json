@@ -1,0 +1,10 @@
+{
+  "app": "node dist/bin/aimensetsu-infra.js",
+  "context": {
+    "projectName": "aimensetsu",
+    "environmentName": "dev",
+    "callbackUrls": ["http://localhost:5173/auth/callback"],
+    "logoutUrls": ["http://localhost:5173/"],
+    "cognitoDomainPrefix": ""
+  }
+}
