@@ -5,6 +5,7 @@
 node_modules/
 dist/
 coverage/
+frontend/test-results/
 cdk.out/
 tmp/
 *.tsbuildinfo
