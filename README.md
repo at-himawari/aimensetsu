@@ -4,6 +4,7 @@
 
 ## 今回の実装
 
+- AIとの対話機能（Azure OpenAI Realtime API）
 - React / TypeScript / Tailwind CSS のフロントエンドMVP
 - Django のJSON APIバックエンドMVP
 - 開発用デモ認証、履歴、削除、職務経歴書アップロード、練習メッセージ、振り返り生成
@@ -35,6 +36,15 @@ npm run dev
 ```
 
 フロントエンドは `http://localhost:5173`、バックエンドは `http://localhost:8000` で起動します。
+
+`VITE_AUTH_MODE=cognito` を使う場合は、フロントエンドにも以下の設定を入れます。
+
+```bash
+VITE_COGNITO_DOMAIN=https://your-domain.auth.ap-northeast-1.amazoncognito.com
+VITE_COGNITO_CLIENT_ID=your-app-client-id
+VITE_COGNITO_REDIRECT_URI=http://localhost:5173
+VITE_COGNITO_LOGOUT_URI=http://localhost:5173
+```
 
 ## 開発用ログイン
 
@@ -74,7 +84,6 @@ npm run dev
 ## 画面デザイン
 
 - シンプルなのがベストだが、質素になりすぎないようにする。
-- デザインルールは `docs/design-rules.md` に記載。
 
 ## 要望
 
@@ -97,10 +106,13 @@ npm run e2e
 - E2Eテスト
 - 特に課金周りは丁寧に行う。
 
-## リリース準備
+## 移行データ
 
-リリースまでのTodoは `docs/release-todo.md` にチェックリストとして整理しています。
+### 現行システム
 
-## インフラ
+- https://github.com/at-himawari/aimensetsu-backend
+- https://github.com/at-himawari/aimensetsu-frontend
 
-Cognito User PoolはCDKで管理します。電話番号認証と電話番号ユニーク化の設計は `docs/cognito-cdk.md`、CDKコードは `infra/` に配置しています。
+### データ移行
+
+Cognitoのユーザーデータを現行システムから当システムに移行したい。

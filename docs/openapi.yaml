@@ -1,0 +1,1380 @@
+openapi: 3.0.3
+info:
+  title: AI面接コーチ API
+  version: 0.1.0
+  description: |
+    AI面接コーチのMVP向け OpenAPI 定義です。
+    `docs/API一覧.md` と `docs/API詳細設計書.md` をもとに作成しています。
+servers:
+  - url: http://localhost:8000
+    description: Local development
+  - url: https://api.example.com
+    description: Production example
+tags:
+  - name: Auth
+  - name: Users
+  - name: Resumes
+  - name: InterviewSessions
+  - name: Messages
+  - name: Reflections
+  - name: History
+  - name: Credits
+  - name: Billing
+  - name: Admin
+paths:
+  /api/auth/demo-login:
+    post:
+      tags: [Auth]
+      summary: デモログイン
+      description: 開発環境でデモユーザーとしてログインします。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DemoLoginRequest'
+      responses:
+        '200':
+          description: ログイン成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoLoginResponseEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: 現在の認証ユーザー情報取得
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthMeResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: ログアウト
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '200':
+          description: ログアウト成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/users/me:
+    get:
+      tags: [Users]
+      summary: ユーザー情報取得
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [Users]
+      summary: ユーザー情報更新
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponseEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: 電話番号重複
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/resumes:
+    get:
+      tags: [Resumes]
+      summary: 職務経歴書一覧取得
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumeListResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Resumes]
+      summary: 職務経歴書アップロード
+      description: ファイルは S3 に保存し、DB にはメタ情報のみ保存します。
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                title:
+                  type: string
+      responses:
+        '201':
+          description: 作成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumeResponseEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          description: S3 保存失敗
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/resumes/{resume_id}:
+    parameters:
+      - $ref: '#/components/parameters/ResumeId'
+    get:
+      tags: [Resumes]
+      summary: 職務経歴書詳細取得
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumeResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Resumes]
+      summary: 職務経歴書削除
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '204':
+          description: 削除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/interview-sessions:
+    get:
+      tags: [InterviewSessions]
+      summary: 面接セッション一覧取得
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSessionListResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [InterviewSessions]
+      summary: 面接セッション開始
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InterviewSessionCreateRequest'
+      responses:
+        '201':
+          description: 作成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSessionCreateResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: 残高不足などの業務ルール違反
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/interview-sessions/{session_id}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [InterviewSessions]
+      summary: 面接セッション詳細取得
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSessionResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [InterviewSessions]
+      summary: 面接セッション削除
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '204':
+          description: 削除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/interview-sessions/{session_id}/complete:
+    post:
+      tags: [InterviewSessions]
+      summary: 面接セッション終了
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: 終了成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSessionCompleteResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: セッション状態不正
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/interview-sessions/{session_id}/messages:
+    get:
+      tags: [Messages]
+      summary: 面接メッセージ一覧取得
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewMessageListResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Messages]
+      summary: 面接メッセージ送信
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InterviewMessageCreateRequest'
+      responses:
+        '200':
+          description: 応答生成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewMessageExchangeResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: セッション状態不正
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: AI 生成失敗
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/interview-sessions/{session_id}/reflection:
+    get:
+      tags: [Reflections]
+      summary: 振り返り取得
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReflectionResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Reflections]
+      summary: 振り返り生成
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: 生成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReflectionResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: セッション未完了などの状態不正
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/history:
+    get:
+      tags: [History]
+      summary: 履歴一覧取得
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSessionListResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/history/{session_id}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [History]
+      summary: 履歴詳細取得
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryDetailResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [History]
+      summary: 履歴削除
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '204':
+          description: 削除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/credits/balance:
+    get:
+      tags: [Credits]
+      summary: クレジット残高取得
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditBalanceResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/credits/transactions:
+    get:
+      tags: [Credits]
+      summary: クレジット取引一覧取得
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditTransactionListResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/billing/checkout-sessions:
+    post:
+      tags: [Billing]
+      summary: Stripe Checkout Session 作成
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema:
+            type: string
+          required: false
+          description: 決済系の重複作成防止キー
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckoutSessionCreateRequest'
+      responses:
+        '201':
+          description: 作成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutSessionResponseEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          description: Stripe セッション作成失敗
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/billing/checkout-sessions/{session_id}:
+    parameters:
+      - $ref: '#/components/parameters/PaymentSessionId'
+    get:
+      tags: [Billing]
+      summary: 決済セッション状態取得
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutSessionStatusResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/billing/webhooks/stripe:
+    post:
+      tags: [Billing]
+      summary: Stripe Webhook 受信
+      parameters:
+        - in: header
+          name: Stripe-Signature
+          schema:
+            type: string
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StripeWebhookEvent'
+      responses:
+        '200':
+          description: 受信成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponseEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: 署名不正
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/admin/audit-logs:
+    get:
+      tags: [Admin]
+      summary: 監査ログ一覧取得
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogListResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/admin/health:
+    get:
+      tags: [Admin]
+      summary: システム状態確認
+      security:
+        - bearerAuth: []
+        - demoUserHeader: []
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminHealthResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    demoUserHeader:
+      type: apiKey
+      in: header
+      name: X-Demo-User
+  parameters:
+    ResumeId:
+      in: path
+      name: resume_id
+      required: true
+      schema:
+        type: string
+    SessionId:
+      in: path
+      name: session_id
+      required: true
+      schema:
+        type: string
+    PaymentSessionId:
+      in: path
+      name: session_id
+      required: true
+      schema:
+        type: string
+  responses:
+    BadRequest:
+      description: 入力不正
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: 未認証
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: 権限不足
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: 対象なし
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    Meta:
+      type: object
+      additionalProperties: false
+      required: [request_id]
+      properties:
+        request_id:
+          type: string
+          example: req_123
+
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [INVALID_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, CONFLICT, INSUFFICIENT_CREDITS, INVALID_STATE, INVALID_FILE_TYPE, FILE_TOO_LARGE, S3_UPLOAD_FAILED, AI_SERVICE_UNAVAILABLE, STRIPE_ERROR, INVALID_WEBHOOK_SIGNATURE]
+          example: INVALID_REQUEST
+        message:
+          type: string
+          example: 入力内容を確認してください。
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/Error'
+
+    MessageResponseEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [message]
+          properties:
+            message:
+              type: string
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    User:
+      type: object
+      additionalProperties: false
+      required: [user_id, name, auth_provider, roles]
+      properties:
+        user_id:
+          type: string
+          example: usr_001
+        name:
+          type: string
+          example: Taro Yamada
+        email:
+          type: string
+          format: email
+          nullable: true
+        phone_number:
+          type: string
+          nullable: true
+        auth_provider:
+          type: string
+          enum: [demo, cognito]
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [user, admin]
+
+    DemoLoginRequest:
+      type: object
+      additionalProperties: false
+      required: [demo_user_id, name]
+      properties:
+        demo_user_id:
+          type: string
+        name:
+          type: string
+
+    DemoLoginResponseEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [user, token_type, access_token]
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+            token_type:
+              type: string
+              enum: [demo]
+              example: demo
+            access_token:
+              type: string
+              example: demo_token_001
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    AuthMeResponseEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/User'
+            - type: object
+              properties:
+                credit_balance_minutes:
+                  type: integer
+                  example: 30
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    UserProfileResponseEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/User'
+            - type: object
+              properties:
+                display_name:
+                  type: string
+                  nullable: true
+                target_job_role:
+                  type: string
+                  nullable: true
+                interview_goal:
+                  type: string
+                  nullable: true
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    UserUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone_number:
+          type: string
+
+    Resume:
+      type: object
+      additionalProperties: false
+      required: [resume_id, file_name, file_path, uploaded_at]
+      properties:
+        resume_id:
+          type: string
+          example: res_001
+        title:
+          type: string
+          nullable: true
+        file_name:
+          type: string
+          example: resume.pdf
+        file_path:
+          type: string
+          description: S3 object key
+          example: resumes/usr_001/res_001/resume.pdf
+        content_type:
+          type: string
+          nullable: true
+        file_size:
+          type: integer
+          format: int64
+          nullable: true
+        uploaded_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ResumeResponseEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/Resume'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    ResumeListResponseEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Resume'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    InterviewSession:
+      type: object
+      additionalProperties: false
+      required: [session_id, status, mode, used_fallback, started_at]
+      properties:
+        session_id:
+          type: string
+          example: ses_001
+        resume_id:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [active, completed, deleted]
+        mode:
+          type: string
+          example: general
+        job_role:
+          type: string
+          nullable: true
+        consumed_minutes:
+          type: integer
+          default: 0
+        remaining_credit_minutes_after:
+          type: integer
+          nullable: true
+        used_fallback:
+          type: boolean
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    InterviewSessionCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        resume_id:
+          type: string
+          nullable: true
+        mode:
+          type: string
+          example: general
+        job_role:
+          type: string
+          nullable: true
+
+    InterviewSessionCreateResponseEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [session_id, status, remaining_credit_minutes, used_fallback, realtime_session]
+          properties:
+            session_id:
+              type: string
+            status:
+              type: string
+              enum: [active]
+            remaining_credit_minutes:
+              type: integer
+            used_fallback:
+              type: boolean
+            realtime_session:
+              $ref: '#/components/schemas/RealtimeSession'
+              nullable: true
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    InterviewSessionResponseEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/InterviewSession'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    InterviewSessionListResponseEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/InterviewSession'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    InterviewSessionCompleteResponseEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [session_id, status, consumed_minutes, remaining_credit_minutes]
+          properties:
+            session_id:
+              type: string
+            status:
+              type: string
+              enum: [completed]
+            consumed_minutes:
+              type: integer
+            remaining_credit_minutes:
+              type: integer
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    InterviewMessage:
+      type: object
+      additionalProperties: false
+      required: [message_id, sender_type, content]
+      properties:
+        message_id:
+          type: string
+        sender_type:
+          type: string
+          enum: [user, assistant]
+        message_type:
+          type: string
+          enum: [text, voice]
+          nullable: true
+        content:
+          type: string
+        ai_mode:
+          type: string
+          enum: [azure, fallback]
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    InterviewMessageCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [message, message_type, client_timestamp]
+      properties:
+        message:
+          type: string
+        message_type:
+          type: string
+          enum: [text, voice]
+        client_timestamp:
+          type: string
+          format: date-time
+
+    InterviewMessageExchangeResponseEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [user_message, assistant_message, used_fallback]
+          properties:
+            user_message:
+              $ref: '#/components/schemas/InterviewMessage'
+            assistant_message:
+              $ref: '#/components/schemas/InterviewMessage'
+            used_fallback:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    InterviewMessageListResponseEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/InterviewMessage'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    Reflection:
+      type: object
+      additionalProperties: false
+      required: [reflection_id, strengths, improvements, advice, ai_mode]
+      properties:
+        reflection_id:
+          type: string
+        strengths:
+          type: array
+          items:
+            type: string
+        improvements:
+          type: array
+          items:
+            type: string
+        advice:
+          type: string
+        ai_mode:
+          type: string
+          enum: [azure, fallback]
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ReflectionResponseEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/Reflection'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    HistoryDetail:
+      type: object
+      additionalProperties: false
+      required: [session, messages]
+      properties:
+        session:
+          $ref: '#/components/schemas/InterviewSession'
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/InterviewMessage'
+        reflection:
+          $ref: '#/components/schemas/Reflection'
+
+    HistoryDetailResponseEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/HistoryDetail'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    CreditBalanceResponseEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [available_minutes]
+          properties:
+            available_minutes:
+              type: integer
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    CreditTransaction:
+      type: object
+      additionalProperties: false
+      required: [transaction_id, transaction_type, minutes_delta, created_at]
+      properties:
+        transaction_id:
+          type: string
+        payment_session_id:
+          type: string
+          nullable: true
+        transaction_type:
+          type: string
+          enum: [grant, consume, adjust, purchase]
+        minutes_delta:
+          type: integer
+        amount_jpy:
+          type: integer
+          nullable: true
+        reason:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    CreditTransactionListResponseEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreditTransaction'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    CheckoutSessionCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [plan_code, quantity, success_url, cancel_url]
+      properties:
+        plan_code:
+          type: string
+          enum: [minutes_30]
+          example: minutes_30
+        quantity:
+          type: integer
+          minimum: 1
+        success_url:
+          type: string
+          format: uri
+        cancel_url:
+          type: string
+          format: uri
+
+    CheckoutSessionResponseEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [payment_session_id, checkout_session_id, checkout_url, expires_at]
+          properties:
+            payment_session_id:
+              type: string
+            checkout_session_id:
+              type: string
+            checkout_url:
+              type: string
+              format: uri
+            expires_at:
+              type: string
+              format: date-time
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    CheckoutSessionStatusResponseEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [payment_session_id, status]
+          properties:
+            payment_session_id:
+              type: string
+            stripe_checkout_session_id:
+              type: string
+              nullable: true
+            status:
+              type: string
+              enum: [created, paid, failed, expired, reflected]
+            amount_jpy:
+              type: integer
+              nullable: true
+            purchased_minutes:
+              type: integer
+              nullable: true
+            completed_at:
+              type: string
+              format: date-time
+              nullable: true
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    AuditLog:
+      type: object
+      additionalProperties: false
+      required: [audit_log_id, action_type, target_type, created_at]
+      properties:
+        audit_log_id:
+          type: string
+        user_id:
+          type: string
+          nullable: true
+        action_type:
+          type: string
+        target_type:
+          type: string
+        target_id:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+
+    AuditLogListResponseEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLog'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    AdminHealthResponseEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [status, services]
+          properties:
+            status:
+              type: string
+              enum: [ok, degraded, error]
+              example: ok
+            services:
+              $ref: '#/components/schemas/HealthServices'
+              example:
+                database: ok
+                azure_openai: ok
+                stripe: ok
+                s3: ok
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    RealtimeSession:
+      type: object
+      additionalProperties: false
+      required: [provider, connection_type, expires_at]
+      properties:
+        provider:
+          type: string
+          enum: [azure_openai]
+        connection_type:
+          type: string
+          enum: [websocket, webrtc]
+        session_id:
+          type: string
+          nullable: true
+        client_secret:
+          type: string
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+
+    StripeWebhookEvent:
+      type: object
+      additionalProperties: true
+      required: [id, type]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [checkout.session.completed, checkout.session.expired, checkout.session.async_payment_failed]
+        data:
+          type: object
+          additionalProperties: true
+
+    HealthServices:
+      type: object
+      additionalProperties: false
+      required: [database, azure_openai, stripe, s3]
+      properties:
+        database:
+          type: string
+          enum: [ok, degraded, error]
+        azure_openai:
+          type: string
+          enum: [ok, degraded, error]
+        stripe:
+          type: string
+          enum: [ok, degraded, error]
+        s3:
+          type: string
+          enum: [ok, degraded, error]
