@@ -1,10 +1,10 @@
 {
-  "app": "node dist/bin/aimensetsu-infra.js",
+  "app": "npx ts-node --prefer-ts-exts bin/aimensetsu-infra.ts",
+  "watch": {
+    "include": ["**"],
+    "exclude": ["README.md", "cdk*.json", "node_modules", "cdk.out"]
+  },
   "context": {
-    "projectName": "aimensetsu",
-    "environmentName": "dev",
-    "callbackUrls": ["http://localhost:5173/auth/callback"],
-    "logoutUrls": ["http://localhost:5173/"],
-    "cognitoDomainPrefix": ""
+    "@aws-cdk/core:newStyleStackSynthesis": true
   }
 }
