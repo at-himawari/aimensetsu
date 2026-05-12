@@ -4,70 +4,66 @@ import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
-def env_bool(name: str, default: bool = False) -> bool:
-    return os.getenv(name, str(default)).lower() in {"1", "true", "yes", "on"}
-
-
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-change-me")
-DEBUG = env_bool("DJANGO_DEBUG", True)
-ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")]
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key")
+DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() == "true"
+ALLOWED_HOSTS = [host for host in os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",") if host]
+ALLOW_INTERVIEW_WITHOUT_CREDITS = os.getenv("ALLOW_INTERVIEW_WITHOUT_CREDITS", "false").lower() == "true"
 
 INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
-    "corsheaders",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "apps.common",
     "apps.users",
+    "apps.resumes",
     "apps.interviews",
+    "apps.billing",
+    "apps.integrations",
 ]
 
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
-    "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "apps.common.middleware.RequestIDMiddleware",
+    "apps.users.middleware.AuthenticationMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
-TEMPLATES = []
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    }
+]
+
 WSGI_APPLICATION = "config.wsgi.application"
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+ASGI_APPLICATION = "config.asgi.application"
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///db.sqlite3")
-if DATABASE_URL.startswith("sqlite:///"):
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / DATABASE_URL.replace("sqlite:///", ""),
-        }
+DATABASES = {
+    "default": {
+        "ENGINE": os.getenv("DB_ENGINE", "django.db.backends.sqlite3"),
+        "NAME": os.getenv("DB_NAME", str(BASE_DIR / "db.sqlite3")),
     }
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": os.getenv("POSTGRES_DB", ""),
-            "USER": os.getenv("POSTGRES_USER", ""),
-            "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
-            "HOST": os.getenv("POSTGRES_HOST", ""),
-            "PORT": os.getenv("POSTGRES_PORT", "5432"),
-        }
-    }
+}
 
-LANGUAGE_CODE = "ja"
+LANGUAGE_CODE = "ja-jp"
 TIME_ZONE = "Asia/Tokyo"
 USE_I18N = True
 USE_TZ = True
 
-CORS_ALLOWED_ORIGINS = [os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")]
-CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
-
-MEDIA_ROOT = BASE_DIR / "media"
-MEDIA_URL = "/media/"
-
-AUTH_MODE = os.getenv("AUTH_MODE", "demo")
-PRACTICE_BLOCK_MINUTES = 30
-PRACTICE_BLOCK_PRICE_JPY = 300
-
+STATIC_URL = "/static/"
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

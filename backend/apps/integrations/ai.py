@@ -1,76 +1,225 @@
-from dataclasses import dataclass
+from __future__ import annotations
+
+import json
 import os
-from typing import Iterable
+import uuid
+from dataclasses import dataclass
+from urllib import error, request
 
-import requests
+
+class AIServiceError(Exception):
+    pass
 
 
-@dataclass(frozen=True)
-class CoachReply:
-    message: str
+@dataclass
+class AIReply:
+    content: str
+    ai_mode: str
+    used_fallback: bool
+
+
+@dataclass
+class ReflectionResult:
     strengths: list[str]
     improvements: list[str]
-    next_questions: list[str]
-    summary: str
+    advice: str
+    ai_mode: str
 
 
-class LocalInterviewCoach:
-    def ask(self, transcript: Iterable[dict[str, str]], document_text: str, role: str) -> CoachReply:
-        latest = next((item["content"] for item in reversed(list(transcript)) if item["role"] == "user"), "")
-        focus = role or "応募職種"
-        document_hint = "職務経歴書の内容も踏まえて" if document_text else "これまでの回答を踏まえて"
-        return CoachReply(
-            message=f"{document_hint}確認します。{focus}で成果を出した具体例を、状況、行動、結果の順にもう少し詳しく話してみてください。",
-            strengths=["回答の方向性が明確です", "経験を自分の言葉で説明できています"],
-            improvements=[f"直近の回答「{latest[:40]}」に数値や比較を足すと説得力が増します"],
-            next_questions=["チームで意見が割れた時、どう合意形成しましたか？", "入社後3か月でどんな価値を出したいですか？"],
-            summary="結論から話す姿勢は良いです。次は成果の大きさと再現性を伝える練習をしましょう。",
+class OpenAIRealtimeService:
+    def __init__(self):
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.model = os.getenv("OPENAI_REALTIME_MODEL", "gpt-realtime-2")
+        self.voice = os.getenv("OPENAI_REALTIME_VOICE", "marin")
+        self.timeout_seconds = float(os.getenv("OPENAI_REALTIME_TIMEOUT_SECONDS", "15"))
+        self.calls_url = os.getenv("OPENAI_REALTIME_CALLS_URL", "https://api.openai.com/v1/realtime/calls")
+
+    def is_configured(self) -> bool:
+        return bool(self.api_key)
+
+    def create_call_answer(self, sdp_offer: str, *, job_role: str | None = None) -> str:
+        if not self.is_configured():
+            raise AIServiceError("openai realtime is not configured")
+        if not sdp_offer.strip():
+            raise AIServiceError("sdp offer is empty")
+
+        instructions = (
+            "あなたは日本語で話す面接官兼面接コーチです。"
+            "回答は短く自然な音声会話にし、1問ずつ深掘りしてください。"
+            "候補者の良い点を拾いながら、結論、具体例、成果が伝わるように促してください。"
+            "必ず敬語で話してください。"
+        )
+        if job_role:
+            instructions += f" 想定職種は{job_role}です。"
+
+        session_config = {
+            "type": "realtime",
+            "model": self.model,
+            "instructions": instructions,
+            "audio": {
+                "input": {
+                    "transcription": {
+                        "model": os.getenv("OPENAI_REALTIME_TRANSCRIPTION_MODEL", "gpt-4o-transcribe"),
+                        "language": os.getenv("OPENAI_REALTIME_TRANSCRIPTION_LANGUAGE", "ja"),
+                    },
+                },
+                "output": {
+                    "voice": self.voice,
+                },
+            },
+            "reasoning": {
+                "effort": os.getenv("OPENAI_REALTIME_REASONING_EFFORT", "low"),
+            },
+        }
+
+        body, content_type = self._multipart_body(
+            {
+                "sdp": sdp_offer,
+                "session": json.dumps(session_config, ensure_ascii=False),
+            }
+        )
+        req = request.Request(
+            self.calls_url,
+            data=body,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": content_type,
+            },
+            method="POST",
         )
 
+        try:
+            with request.urlopen(req, timeout=self.timeout_seconds) as response:
+                return response.read().decode("utf-8")
+        except error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise AIServiceError(f"openai realtime call failed: {exc.code} {detail}") from exc
+        except (error.URLError, TimeoutError) as exc:
+            raise AIServiceError(str(exc)) from exc
 
-class AzureInterviewCoach:
-    def __init__(self) -> None:
-        self.endpoint = os.environ["AZURE_OPENAI_ENDPOINT"].rstrip("/")
-        self.api_key = os.environ["AZURE_OPENAI_API_KEY"]
-        self.deployment = os.environ["AZURE_OPENAI_DEPLOYMENT"]
-        self.api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21")
+    @staticmethod
+    def _multipart_body(fields: dict[str, str]) -> tuple[bytes, str]:
+        boundary = f"----aimensetsu-{uuid.uuid4().hex}"
+        chunks: list[bytes] = []
+        for name, value in fields.items():
+            chunks.append(f"--{boundary}\r\n".encode("utf-8"))
+            chunks.append(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8"))
+            chunks.append(value.encode("utf-8"))
+            chunks.append(b"\r\n")
+        chunks.append(f"--{boundary}--\r\n".encode("utf-8"))
+        return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
 
-    def ask(self, transcript: Iterable[dict[str, str]], document_text: str, role: str) -> CoachReply:
-        system = (
-            "あなたは日本語の面接コーチです。候補者を安心させつつ、回答を深掘りしてください。"
-            "JSONで message, strengths, improvements, next_questions, summary を返してください。"
+
+class AzureOpenAIService:
+    def __init__(self):
+        self.endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        self.api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        self.deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+        self.api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-01-preview")
+        self.timeout_seconds = float(os.getenv("AZURE_OPENAI_TIMEOUT_SECONDS", "8"))
+
+    def is_configured(self) -> bool:
+        return bool(self.endpoint and self.api_key and self.deployment)
+
+    def generate_reply(self, prompt: str) -> AIReply:
+        if not self.is_configured():
+            raise AIServiceError("azure openai is not configured")
+
+        payload = {
+            "messages": [
+                {"role": "system", "content": "You are an interview coach."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.7,
+        }
+        url = (
+            f"{self.endpoint}/openai/deployments/{self.deployment}/chat/completions"
+            f"?api-version={self.api_version}"
         )
-        messages = [{"role": "system", "content": system}]
-        if document_text:
-            messages.append({"role": "user", "content": f"職務経歴書:\n{document_text[:5000]}"})
-        if role:
-            messages.append({"role": "user", "content": f"応募職種: {role}"})
-        messages.extend(transcript)
-
-        url = f"{self.endpoint}/openai/deployments/{self.deployment}/chat/completions"
-        response = requests.post(
+        req = request.Request(
             url,
-            params={"api-version": self.api_version},
-            headers={"api-key": self.api_key, "Content-Type": "application/json"},
-            json={"messages": messages, "temperature": 0.6, "response_format": {"type": "json_object"}},
-            timeout=30,
-        )
-        response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
-        import json
-
-        payload = json.loads(content)
-        return CoachReply(
-            message=payload["message"],
-            strengths=payload.get("strengths", []),
-            improvements=payload.get("improvements", []),
-            next_questions=payload.get("next_questions", []),
-            summary=payload.get("summary", ""),
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "api-key": self.api_key,
+            },
+            method="POST",
         )
 
+        try:
+            with request.urlopen(req, timeout=self.timeout_seconds) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except (error.URLError, error.HTTPError, TimeoutError, json.JSONDecodeError) as exc:
+            raise AIServiceError(str(exc)) from exc
 
-def get_coach() -> LocalInterviewCoach | AzureInterviewCoach:
-    if os.getenv("AZURE_OPENAI_ENDPOINT") and os.getenv("AZURE_OPENAI_API_KEY") and os.getenv("AZURE_OPENAI_DEPLOYMENT"):
-        return AzureInterviewCoach()
-    return LocalInterviewCoach()
+        choices = body.get("choices") or []
+        if not choices:
+            raise AIServiceError("empty response from azure openai")
 
+        message = choices[0].get("message", {})
+        content = message.get("content")
+        if not content:
+            raise AIServiceError("azure openai response content is empty")
+
+        return AIReply(content=content, ai_mode="azure", used_fallback=False)
+
+    def generate_reflection(self, transcript: str) -> ReflectionResult:
+        reply = self.generate_reply(
+            "Summarize this interview practice into strengths, improvements, and one concise advice.\n"
+            f"{transcript}"
+        )
+        lines = [line.strip("- ").strip() for line in reply.content.splitlines() if line.strip()]
+        strengths = lines[:2] or ["具体例を交えて話せていた"]
+        improvements = lines[2:4] or ["結論から先に答えるとより良い"]
+        advice = lines[4] if len(lines) > 4 else "最初の30秒で要点をまとめることを意識してください。"
+        return ReflectionResult(
+            strengths=strengths,
+            improvements=improvements,
+            advice=advice,
+            ai_mode="azure",
+        )
+
+
+class LocalFallbackAIService:
+    DEFAULT_REPLY = "ありがとうございます。では次に、これまでの経験の中で最も成果を出した取り組みを教えてください。"
+
+    def generate_reply(self, prompt: str) -> AIReply:
+        lower_prompt = prompt.lower()
+        if "自己紹介" in prompt:
+            content = "ではまず、1分程度でこれまでのご経歴を教えてください。"
+        elif "転職" in prompt or "転職理由" in prompt:
+            content = "転職を考えている理由を、現職で感じていることと合わせて教えてください。"
+        elif "強み" in prompt:
+            content = "あなたの強みを、実際のエピソードを交えて教えてください。"
+        elif "weakness" in lower_prompt or "弱み" in prompt:
+            content = "ご自身の課題だと思っている点と、それにどう向き合っているかを教えてください。"
+        else:
+            content = self.DEFAULT_REPLY
+
+        return AIReply(content=content, ai_mode="fallback", used_fallback=True)
+
+    def generate_reflection(self, transcript: str) -> ReflectionResult:
+        return ReflectionResult(
+            strengths=["具体的な経験に触れようとしていた"],
+            improvements=["結論を先に述べると、より伝わりやすくなります"],
+            advice="回答の最初に要点、その後に具体例という順番を意識してください。",
+            ai_mode="fallback",
+        )
+
+
+class InterviewAIService:
+    def __init__(self):
+        self.azure = AzureOpenAIService()
+        self.fallback = LocalFallbackAIService()
+
+    def generate_reply(self, prompt: str) -> AIReply:
+        try:
+            return self.azure.generate_reply(prompt)
+        except AIServiceError:
+            return self.fallback.generate_reply(prompt)
+
+    def generate_reflection(self, transcript: str) -> ReflectionResult:
+        try:
+            return self.azure.generate_reflection(transcript)
+        except AIServiceError:
+            return self.fallback.generate_reflection(transcript)
