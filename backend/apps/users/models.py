@@ -1,39 +1,37 @@
-from django.contrib.auth.models import User
+from __future__ import annotations
+
 from django.db import models
-from django.utils import timezone
+
+from apps.common.models import TimestampMixin
 
 
-class UserProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
-    phone_number = models.CharField(max_length=32, unique=True, null=True, blank=True)
-    display_name = models.CharField(max_length=120)
-    stripe_customer_id = models.CharField(max_length=120, blank=True)
-    phone_verified_at = models.DateTimeField(null=True, blank=True)
+class AppUser(TimestampMixin):
+    class AuthProvider(models.TextChoices):
+        DEMO = "demo", "Demo"
+        COGNITO = "cognito", "Cognito"
 
-    def __str__(self) -> str:
-        return self.display_name
+    class Role(models.TextChoices):
+        USER = "user", "User"
+        ADMIN = "admin", "Admin"
 
-    @property
-    def is_phone_verified(self) -> bool:
-        return bool(self.phone_number and self.phone_verified_at)
-
-    def mark_phone_verified(self, phone_number: str) -> None:
-        self.phone_number = phone_number
-        self.phone_verified_at = timezone.now()
-        self.save(update_fields=["phone_number", "phone_verified_at"])
-
-
-class PhoneVerificationCode(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="phone_verification_codes")
-    phone_number = models.CharField(max_length=32)
-    code_hash = models.CharField(max_length=128)
-    expires_at = models.DateTimeField()
-    consumed_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    user_id = models.CharField(primary_key=True, max_length=64)
+    email = models.EmailField(max_length=255, null=True, blank=True, db_index=True)
+    name = models.CharField(max_length=100)
+    phone_number = models.CharField(max_length=20, null=True, blank=True, unique=True)
+    auth_provider = models.CharField(max_length=20, choices=AuthProvider.choices, db_index=True)
+    external_subject = models.CharField(max_length=255, null=True, blank=True, db_index=True)
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.USER, db_index=True)
 
     class Meta:
-        indexes = [models.Index(fields=["user", "phone_number", "created_at"])]
+        db_table = "users"
 
-    @property
-    def is_active(self) -> bool:
-        return self.consumed_at is None and self.expires_at > timezone.now()
+
+class UserProfile(TimestampMixin):
+    user_profile_id = models.CharField(primary_key=True, max_length=64)
+    user = models.OneToOneField(AppUser, on_delete=models.CASCADE, related_name="profile")
+    display_name = models.CharField(max_length=100, null=True, blank=True)
+    target_job_role = models.CharField(max_length=100, null=True, blank=True)
+    interview_goal = models.TextField(null=True, blank=True)
+
+    class Meta:
+        db_table = "user_profiles"

@@ -1,339 +1,365 @@
+from __future__ import annotations
+
 import json
-import hashlib
-import hmac
-import random
-import re
 
-from django.conf import settings
-from django.contrib.auth.models import User
-from django.http import HttpRequest, HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404
+from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods, require_POST
-import os
+from django.views.decorators.http import require_GET, require_http_methods
 
-from apps.integrations.ai import get_coach
-from apps.integrations.billing import create_checkout_session
-from apps.integrations.sms import get_sms_sender
-from apps.interviews.auth import get_request_user
-from apps.interviews.models import FeedbackReport, PracticeMessage, PracticeSession, QuotaLedger, UploadedDocument
-from apps.users.models import PhoneVerificationCode, UserProfile
-
-
-def payload(request: HttpRequest) -> dict:
-    if not request.body:
-        return {}
-    return json.loads(request.body.decode("utf-8"))
-
-
-def quota_remaining(user: User) -> int:
-    credits = sum(entry.minutes for entry in user.quota_entries.filter(kind=QuotaLedger.CREDIT))
-    debits = sum(entry.minutes for entry in user.quota_entries.filter(kind=QuotaLedger.DEBIT))
-    if credits == 0:
-        credits = settings.PRACTICE_BLOCK_MINUTES
-    return max(credits - debits, 0)
+from apps.common.audit import log_audit_event
+from apps.common.auth import require_principal
+from apps.common.responses import json_error, json_success
+from apps.integrations.ai import AIServiceError, OpenAIRealtimeService
+from apps.resumes.models import ResumeFile
+from apps.users.models import AppUser
+from .models import InterviewSession
+from .services import (
+    complete_session,
+    create_message_exchange,
+    ensure_sufficient_credits,
+    generate_reflection,
+    generate_session_id,
+)
 
 
-def serialize_session(session: PracticeSession) -> dict:
+def _serialize_session(session: InterviewSession) -> dict:
     return {
-        "id": session.id,
-        "title": session.title,
-        "role": session.role,
-        "minutesUsed": session.minutes_used,
-        "createdAt": session.created_at.isoformat(),
-        "updatedAt": session.updated_at.isoformat(),
-        "messageCount": session.messages.count(),
-        "documentCount": session.documents.count(),
+        "session_id": session.session_id,
+        "resume_id": session.resume_id,
+        "status": session.status,
+        "mode": session.mode,
+        "job_role": session.job_role,
+        "consumed_minutes": session.consumed_minutes,
+        "remaining_credit_minutes_after": session.remaining_credit_minutes_after,
+        "used_fallback": session.used_fallback,
+        "started_at": session.started_at.isoformat(),
+        "ended_at": session.ended_at.isoformat() if session.ended_at else None,
     }
 
 
-def require_user(request: HttpRequest) -> User:
-    try:
-        return get_request_user(request)
-    except PermissionError as exc:
-        raise PermissionError(str(exc))
+def _get_user(request: HttpRequest) -> AppUser:
+    return AppUser.objects.get(user_id=request.principal.user_id)
 
 
-def unauthorized(message: str) -> JsonResponse:
-    return JsonResponse({"error": "unauthorized", "message": message}, status=401)
-
-
-def phone_required() -> JsonResponse:
-    return JsonResponse(
-        {"error": "phone_verification_required", "message": "電話番号認証を完了してください。"},
-        status=403,
-    )
-
-
-def require_phone_verified(user: User) -> None:
-    if not user.profile.is_phone_verified:
-        raise PermissionError("phone_verification_required")
-
-
-def normalize_jp_phone_number(value: str) -> str:
-    compact = re.sub(r"[\s\-()]", "", value)
-    if compact.startswith("+"):
-        normalized = compact
-    elif compact.startswith("0"):
-        normalized = f"+81{compact[1:]}"
-    else:
-        normalized = compact
-    if not re.fullmatch(r"\+[1-9]\d{7,14}", normalized):
-        raise ValueError("電話番号はE.164形式、または09012345678のような国内形式で入力してください。")
-    return normalized
-
-
-def hash_verification_code(code: str) -> str:
-    return hmac.new(settings.SECRET_KEY.encode("utf-8"), code.encode("utf-8"), hashlib.sha256).hexdigest()
-
-
-@require_http_methods(["GET"])
-def me(request: HttpRequest) -> JsonResponse:
-    try:
-        user = require_user(request)
-    except PermissionError as exc:
-        return unauthorized(str(exc))
-    profile = user.profile
-    return JsonResponse(
-        {
-            "email": user.email,
-            "name": profile.display_name,
-            "phoneNumber": profile.phone_number,
-            "phoneVerified": profile.is_phone_verified,
-            "requiresPhoneVerification": not profile.is_phone_verified,
-            "quotaMinutes": quota_remaining(user),
-            "blockPriceJpy": settings.PRACTICE_BLOCK_PRICE_JPY,
-            "blockMinutes": settings.PRACTICE_BLOCK_MINUTES,
-        }
-    )
-
-
-@csrf_exempt
 @require_http_methods(["GET", "POST"])
-def sessions(request: HttpRequest) -> JsonResponse:
-    try:
-        user = require_user(request)
-    except PermissionError as exc:
-        return unauthorized(str(exc))
+@require_principal
+def interview_sessions(request: HttpRequest):
+    user = _get_user(request)
+
     if request.method == "GET":
-        return JsonResponse({"sessions": [serialize_session(item) for item in user.practice_sessions.all()]})
-    try:
-        require_phone_verified(user)
-    except PermissionError:
-        return phone_required()
+        sessions = InterviewSession.objects.filter(user=user).exclude(
+            status=InterviewSession.Status.DELETED
+        ).order_by("-started_at")
+        return json_success(request, [_serialize_session(session) for session in sessions])
 
-    data = payload(request)
-    session = PracticeSession.objects.create(
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return json_error(request, "INVALID_REQUEST", "JSON を解釈できません。", 400)
+
+    resume_id = payload.get("resume_id")
+    mode = payload.get("mode")
+    job_role = payload.get("job_role")
+    if not mode:
+        return json_error(request, "INVALID_REQUEST", "mode は必須です。", 400)
+
+    try:
+        balance = ensure_sufficient_credits(user)
+    except ValueError as exc:
+        return json_error(request, "INSUFFICIENT_CREDITS", str(exc), 422)
+
+    resume = None
+    if resume_id:
+        try:
+            resume = ResumeFile.objects.get(
+                resume_id=resume_id,
+                user=user,
+                deleted_at__isnull=True,
+            )
+        except ResumeFile.DoesNotExist:
+            return json_error(request, "NOT_FOUND", "RESUME が見つかりません。", 404)
+
+    session = InterviewSession.objects.create(
+        session_id=generate_session_id(),
         user=user,
-        title=data.get("title") or "新しい面接練習",
-        role=data.get("role", ""),
+        resume=resume,
+        status=InterviewSession.Status.ACTIVE,
+        mode=mode,
+        job_role=job_role,
+        started_at=timezone.now(),
     )
-    PracticeMessage.objects.create(session=session, role=PracticeMessage.ASSISTANT, content="今日はよろしくお願いします。まず自己紹介をお願いします。")
-    return JsonResponse({"session": serialize_session(session)}, status=201)
+    log_audit_event(
+        action_type="start",
+        target_type="interview_session",
+        target_id=session.session_id,
+        user=user,
+        metadata={"mode": mode, "resume_id": resume_id},
+    )
+    return json_success(
+        request,
+        {
+            "session_id": session.session_id,
+            "status": session.status,
+            "remaining_credit_minutes": balance.available_minutes,
+            "used_fallback": session.used_fallback,
+            "realtime_session": None,
+        },
+        status=201,
+    )
 
 
-@csrf_exempt
-@require_http_methods(["DELETE"])
-def session_detail(request: HttpRequest, session_id: int) -> JsonResponse:
+@require_http_methods(["GET", "DELETE"])
+@require_principal
+def interview_session_detail(request: HttpRequest, session_id: str):
+    user = _get_user(request)
     try:
-        user = require_user(request)
-    except PermissionError as exc:
-        return unauthorized(str(exc))
-    session = get_object_or_404(PracticeSession, id=session_id, user=user)
-    session.delete()
-    return JsonResponse({"ok": True})
+        session = InterviewSession.objects.get(session_id=session_id, user=user)
+    except InterviewSession.DoesNotExist:
+        return json_error(request, "NOT_FOUND", "面接セッションが見つかりません。", 404)
+
+    if request.method == "GET":
+        return json_success(request, _serialize_session(session))
+
+    session.status = InterviewSession.Status.DELETED
+    session.save(update_fields=["status"])
+    log_audit_event(
+        action_type="delete",
+        target_type="interview_session",
+        target_id=session.session_id,
+        user=user,
+        metadata={"from": "session_detail"},
+    )
+    return json_success(request, {"message": "deleted"})
 
 
-@csrf_exempt
-@require_POST
-def upload_document(request: HttpRequest, session_id: int) -> JsonResponse:
+@require_http_methods(["POST"])
+@require_principal
+def interview_session_complete(request: HttpRequest, session_id: str):
+    user = _get_user(request)
     try:
-        user = require_user(request)
-    except PermissionError as exc:
-        return unauthorized(str(exc))
-    try:
-        require_phone_verified(user)
-    except PermissionError:
-        return phone_required()
-    session = get_object_or_404(PracticeSession, id=session_id, user=user)
-    uploaded = request.FILES["file"]
-    text = uploaded.read().decode("utf-8", errors="ignore")[:12000]
-    uploaded.seek(0)
-    document = UploadedDocument.objects.create(session=session, file=uploaded, extracted_text=text)
-    return JsonResponse({"id": document.id, "filename": uploaded.name, "chars": len(text)}, status=201)
+        session = InterviewSession.objects.get(session_id=session_id, user=user)
+    except InterviewSession.DoesNotExist:
+        return json_error(request, "NOT_FOUND", "面接セッションが見つかりません。", 404)
 
-
-@csrf_exempt
-@require_POST
-def add_message(request: HttpRequest, session_id: int) -> JsonResponse:
     try:
-        user = require_user(request)
-    except PermissionError as exc:
-        return unauthorized(str(exc))
-    try:
-        require_phone_verified(user)
-    except PermissionError:
-        return phone_required()
-    session = get_object_or_404(PracticeSession, id=session_id, user=user)
-    if quota_remaining(user) <= 0:
-        return JsonResponse({"error": "quota_required", "message": "練習時間を追加してください。"}, status=402)
+        session, balance = complete_session(session)
+    except ValueError as exc:
+        return json_error(request, "INVALID_STATE", str(exc), 409)
 
-    data = payload(request)
-    PracticeMessage.objects.create(session=session, role=PracticeMessage.USER, content=data["content"])
-    transcript = [{"role": item.role, "content": item.content} for item in session.messages.all()]
-    document_text = "\n".join(item.extracted_text for item in session.documents.all())
-    reply = get_coach().ask(transcript, document_text, session.role)
-    message = PracticeMessage.objects.create(session=session, role=PracticeMessage.ASSISTANT, content=reply.message)
-    session.minutes_used += max(1, int(data.get("minutes", 1)))
-    session.save(update_fields=["minutes_used", "updated_at"])
-    QuotaLedger.objects.create(user=user, kind=QuotaLedger.DEBIT, minutes=max(1, int(data.get("minutes", 1))), amount_jpy=0)
-    return JsonResponse({"message": {"id": message.id, "role": message.role, "content": message.content}, "quotaMinutes": quota_remaining(user)})
+    log_audit_event(
+        action_type="complete",
+        target_type="interview_session",
+        target_id=session.session_id,
+        user=user,
+        metadata={"consumed_minutes": session.consumed_minutes},
+    )
 
-
-@csrf_exempt
-@require_POST
-def feedback(request: HttpRequest, session_id: int) -> JsonResponse:
-    try:
-        user = require_user(request)
-    except PermissionError as exc:
-        return unauthorized(str(exc))
-    try:
-        require_phone_verified(user)
-    except PermissionError:
-        return phone_required()
-    session = get_object_or_404(PracticeSession, id=session_id, user=user)
-    transcript = [{"role": item.role, "content": item.content} for item in session.messages.all()]
-    document_text = "\n".join(item.extracted_text for item in session.documents.all())
-    reply = get_coach().ask(transcript, document_text, session.role)
-    report, _ = FeedbackReport.objects.update_or_create(
-        session=session,
-        defaults={
-            "strengths": reply.strengths,
-            "improvements": reply.improvements,
-            "next_questions": reply.next_questions,
-            "summary": reply.summary,
+    return json_success(
+        request,
+        {
+            "session_id": session.session_id,
+            "status": session.status,
+            "consumed_minutes": session.consumed_minutes,
+            "remaining_credit_minutes": balance.available_minutes,
         },
     )
-    return JsonResponse(
+
+
+@require_GET
+@require_principal
+def history_list(request: HttpRequest):
+    user = _get_user(request)
+    sessions = InterviewSession.objects.filter(user=user).exclude(
+        status=InterviewSession.Status.DELETED
+    ).order_by("-started_at")
+    return json_success(request, [_serialize_session(session) for session in sessions])
+
+
+@require_http_methods(["GET", "DELETE"])
+@require_principal
+def history_detail(request: HttpRequest, session_id: str):
+    user = _get_user(request)
+    try:
+        session = InterviewSession.objects.prefetch_related("messages").select_related("reflection").get(
+            session_id=session_id,
+            user=user,
+        )
+    except InterviewSession.DoesNotExist:
+        return json_error(request, "NOT_FOUND", "履歴が見つかりません。", 404)
+
+    if request.method == "DELETE":
+        session.status = InterviewSession.Status.DELETED
+        session.save(update_fields=["status"])
+        log_audit_event(
+            action_type="delete",
+            target_type="history",
+            target_id=session.session_id,
+            user=user,
+            metadata={"from": "history_detail"},
+        )
+        return json_success(request, {"message": "deleted"})
+
+    messages = [
         {
-            "summary": report.summary,
-            "strengths": report.strengths,
-            "improvements": report.improvements,
-            "nextQuestions": report.next_questions,
+            "message_id": message.message_id,
+            "sender_type": message.sender_type,
+            "message_type": message.message_type,
+            "content": message.content,
+            "ai_mode": message.ai_mode,
+            "created_at": message.created_at.isoformat(),
         }
+        for message in session.messages.all().order_by("created_at")
+    ]
+    reflection = None
+    if hasattr(session, "reflection"):
+        reflection = {
+            "reflection_id": session.reflection.reflection_id,
+            "strengths": session.reflection.strengths.splitlines() if session.reflection.strengths else [],
+            "improvements": session.reflection.improvements.splitlines() if session.reflection.improvements else [],
+            "advice": session.reflection.advice,
+            "ai_mode": session.reflection.ai_mode,
+            "created_at": session.reflection.created_at.isoformat(),
+        }
+
+    return json_success(
+        request,
+        {
+            "session": _serialize_session(session),
+            "messages": messages,
+            "reflection": reflection,
+        },
     )
 
 
-@csrf_exempt
-@require_POST
-def create_checkout(request: HttpRequest) -> JsonResponse:
+@require_http_methods(["GET", "POST"])
+@require_principal
+def session_messages(request: HttpRequest, session_id: str):
+    user = _get_user(request)
     try:
-        user = require_user(request)
-    except PermissionError as exc:
-        return unauthorized(str(exc))
-    try:
-        require_phone_verified(user)
-    except PermissionError:
-        return phone_required()
-    return JsonResponse(create_checkout_session(user))
+        session = InterviewSession.objects.prefetch_related("messages").get(session_id=session_id, user=user)
+    except InterviewSession.DoesNotExist:
+        return json_error(request, "NOT_FOUND", "面接セッションが見つかりません。", 404)
 
+    if request.method == "GET":
+        messages = [
+            {
+                "message_id": message.message_id,
+                "sender_type": message.sender_type,
+                "message_type": message.message_type,
+                "content": message.content,
+                "ai_mode": message.ai_mode,
+                "created_at": message.created_at.isoformat(),
+            }
+            for message in session.messages.all().order_by("created_at")
+        ]
+        return json_success(request, messages)
 
-@csrf_exempt
-@require_POST
-def start_phone_verification(request: HttpRequest) -> JsonResponse:
     try:
-        user = require_user(request)
-    except PermissionError as exc:
-        return unauthorized(str(exc))
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return json_error(request, "INVALID_REQUEST", "JSON を解釈できません。", 400)
 
-    data = payload(request)
+    content = payload.get("message")
+    message_type = payload.get("message_type")
+    if not content or not message_type:
+        return json_error(request, "INVALID_REQUEST", "message と message_type は必須です。", 400)
+
     try:
-        phone_number = normalize_jp_phone_number(data.get("phoneNumber", ""))
+        user_message, assistant_message, ai_reply = create_message_exchange(session, content, message_type)
     except ValueError as exc:
-        return JsonResponse({"error": "invalid_phone_number", "message": str(exc)}, status=400)
+        return json_error(request, "INVALID_STATE", str(exc), 409)
 
-    if UserProfile.objects.filter(phone_number=phone_number).exclude(user=user).exists():
-        return JsonResponse({"error": "phone_number_taken", "message": "この電話番号はすでに登録されています。"}, status=409)
-
-    code = f"{random.SystemRandom().randint(0, 999999):06d}"
-    PhoneVerificationCode.objects.filter(user=user, phone_number=phone_number, consumed_at__isnull=True).update(
-        consumed_at=timezone.now()
-    )
-    PhoneVerificationCode.objects.create(
+    log_audit_event(
+        action_type="message",
+        target_type="interview_session",
+        target_id=session.session_id,
         user=user,
-        phone_number=phone_number,
-        code_hash=hash_verification_code(code),
-        expires_at=timezone.now() + timezone.timedelta(minutes=10),
+        metadata={"used_fallback": ai_reply.used_fallback},
     )
-    result = get_sms_sender().send_verification_code(phone_number, code)
-    response = {"phoneNumber": phone_number, "expiresInSeconds": 600, "delivery": result["mode"]}
-    if result["mode"] == "local":
-        response["verificationCode"] = code
-    return JsonResponse(response, status=201)
 
-
-@csrf_exempt
-@require_POST
-def verify_phone(request: HttpRequest) -> JsonResponse:
-    try:
-        user = require_user(request)
-    except PermissionError as exc:
-        return unauthorized(str(exc))
-
-    data = payload(request)
-    try:
-        phone_number = normalize_jp_phone_number(data.get("phoneNumber", ""))
-    except ValueError as exc:
-        return JsonResponse({"error": "invalid_phone_number", "message": str(exc)}, status=400)
-
-    code = str(data.get("code", "")).strip()
-    verification = (
-        PhoneVerificationCode.objects.filter(user=user, phone_number=phone_number, consumed_at__isnull=True)
-        .order_by("-created_at")
-        .first()
+    return json_success(
+        request,
+        {
+            "user_message": {
+                "message_id": user_message.message_id,
+                "sender_type": user_message.sender_type,
+                "message_type": user_message.message_type,
+                "content": user_message.content,
+            },
+            "assistant_message": {
+                "message_id": assistant_message.message_id,
+                "sender_type": assistant_message.sender_type,
+                "message_type": assistant_message.message_type,
+                "content": assistant_message.content,
+                "ai_mode": assistant_message.ai_mode,
+            },
+            "used_fallback": ai_reply.used_fallback,
+        },
     )
-    if not verification or not verification.is_active:
-        return JsonResponse({"error": "verification_expired", "message": "確認コードの有効期限が切れています。"}, status=400)
-    if not hmac.compare_digest(verification.code_hash, hash_verification_code(code)):
-        return JsonResponse({"error": "invalid_verification_code", "message": "確認コードが正しくありません。"}, status=400)
-    if UserProfile.objects.filter(phone_number=phone_number).exclude(user=user).exists():
-        return JsonResponse({"error": "phone_number_taken", "message": "この電話番号はすでに登録されています。"}, status=409)
-
-    verification.consumed_at = timezone.now()
-    verification.save(update_fields=["consumed_at"])
-    user.profile.mark_phone_verified(phone_number)
-    return JsonResponse({"phoneNumber": phone_number, "phoneVerified": True})
 
 
-@csrf_exempt
-@require_POST
-def stripe_webhook(request: HttpRequest) -> HttpResponse:
-    webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+@require_http_methods(["POST"])
+@require_principal
+def realtime_call(request: HttpRequest, session_id: str):
+    user = _get_user(request)
     try:
-        if webhook_secret:
-            import stripe
+        session = InterviewSession.objects.get(session_id=session_id, user=user)
+    except InterviewSession.DoesNotExist:
+        return json_error(request, "NOT_FOUND", "面接セッションが見つかりません。", 404)
 
-            data = stripe.Webhook.construct_event(
-                request.body,
-                request.headers.get("Stripe-Signature", ""),
-                webhook_secret,
-            )
-        else:
-            data = json.loads(request.body.decode("utf-8"))
-    except (ValueError, json.JSONDecodeError):
-        return HttpResponse(status=400)
+    if session.status != InterviewSession.Status.ACTIVE:
+        return json_error(request, "INVALID_STATE", "進行中の面接セッションではありません。", 409)
 
-    if data.get("type") == "checkout.session.completed":
-        session = data["data"]["object"]
-        user_id = session.get("client_reference_id") or session.get("metadata", {}).get("user_id")
-        stripe_session_id = session.get("id", "")
-        if user_id:
-            user = User.objects.get(id=user_id)
-            QuotaLedger.objects.get_or_create(
-                user=user,
-                kind=QuotaLedger.CREDIT,
-                stripe_session_id=stripe_session_id,
-                defaults={"minutes": settings.PRACTICE_BLOCK_MINUTES, "amount_jpy": settings.PRACTICE_BLOCK_PRICE_JPY},
-            )
-    return HttpResponse(status=200)
+    sdp_offer = request.body.decode("utf-8", errors="replace")
+    try:
+        sdp_answer = OpenAIRealtimeService().create_call_answer(sdp_offer, job_role=session.job_role)
+    except AIServiceError as exc:
+        return json_error(request, "REALTIME_UNAVAILABLE", str(exc), 503)
+
+    log_audit_event(
+        action_type="realtime_call",
+        target_type="interview_session",
+        target_id=session.session_id,
+        user=user,
+        metadata={"model": "gpt-realtime-2"},
+    )
+    return HttpResponse(sdp_answer, content_type="application/sdp", status=201)
+
+
+@require_http_methods(["GET", "POST"])
+@require_principal
+def session_reflection(request: HttpRequest, session_id: str):
+    user = _get_user(request)
+    try:
+        session = InterviewSession.objects.select_related("reflection").get(session_id=session_id, user=user)
+    except InterviewSession.DoesNotExist:
+        return json_error(request, "NOT_FOUND", "面接セッションが見つかりません。", 404)
+
+    if request.method == "GET":
+        if not hasattr(session, "reflection"):
+            return json_error(request, "NOT_FOUND", "振り返りが見つかりません。", 404)
+        reflection = session.reflection
+    else:
+        try:
+            reflection = generate_reflection(session)
+        except ValueError as exc:
+            return json_error(request, "INVALID_STATE", str(exc), 409)
+        log_audit_event(
+            action_type="generate_reflection",
+            target_type="interview_session",
+            target_id=session.session_id,
+            user=user,
+            metadata={"ai_mode": reflection.ai_mode},
+        )
+
+    return json_success(
+        request,
+        {
+            "reflection_id": reflection.reflection_id,
+            "strengths": reflection.strengths.splitlines() if reflection.strengths else [],
+            "improvements": reflection.improvements.splitlines() if reflection.improvements else [],
+            "advice": reflection.advice,
+            "ai_mode": reflection.ai_mode,
+            "created_at": reflection.created_at.isoformat(),
+        },
+    )

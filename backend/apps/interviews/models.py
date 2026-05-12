@@ -1,62 +1,82 @@
-from django.conf import settings
-from django.contrib.auth.models import User
+from __future__ import annotations
+
 from django.db import models
 
+from apps.resumes.models import ResumeFile
+from apps.users.models import AppUser
 
-class PracticeSession(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="practice_sessions")
-    title = models.CharField(max_length=160)
-    role = models.CharField(max_length=160, blank=True)
-    minutes_used = models.PositiveIntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+
+class InterviewSession(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        COMPLETED = "completed", "Completed"
+        DELETED = "deleted", "Deleted"
+
+    session_id = models.CharField(primary_key=True, max_length=64)
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="interview_sessions")
+    resume = models.ForeignKey(
+        ResumeFile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="interview_sessions",
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, db_index=True)
+    mode = models.CharField(max_length=50)
+    job_role = models.CharField(max_length=100, null=True, blank=True)
+    consumed_minutes = models.IntegerField(default=0)
+    remaining_credit_minutes_after = models.IntegerField(null=True, blank=True)
+    used_fallback = models.BooleanField(default=False)
+    started_at = models.DateTimeField(db_index=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        ordering = ["-updated_at"]
+        db_table = "interview_sessions"
+        indexes = [
+            models.Index(fields=["user", "-started_at"], name="session_user_started_idx"),
+        ]
 
 
-class UploadedDocument(models.Model):
-    session = models.ForeignKey(PracticeSession, on_delete=models.CASCADE, related_name="documents")
-    file = models.FileField(upload_to="documents/")
-    extracted_text = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+class InterviewMessage(models.Model):
+    class SenderType(models.TextChoices):
+        USER = "user", "User"
+        ASSISTANT = "assistant", "Assistant"
 
+    class MessageType(models.TextChoices):
+        TEXT = "text", "Text"
+        VOICE = "voice", "Voice"
 
-class PracticeMessage(models.Model):
-    USER = "user"
-    ASSISTANT = "assistant"
-    ROLE_CHOICES = [(USER, "User"), (ASSISTANT, "Assistant")]
+    class AIMode(models.TextChoices):
+        AZURE = "azure", "Azure"
+        FALLBACK = "fallback", "Fallback"
 
-    session = models.ForeignKey(PracticeSession, on_delete=models.CASCADE, related_name="messages")
-    role = models.CharField(max_length=16, choices=ROLE_CHOICES)
+    message_id = models.CharField(primary_key=True, max_length=64)
+    session = models.ForeignKey(InterviewSession, on_delete=models.CASCADE, related_name="messages")
+    sender_type = models.CharField(max_length=20, choices=SenderType.choices, db_index=True)
+    message_type = models.CharField(max_length=20, choices=MessageType.choices)
     content = models.TextField()
+    ai_mode = models.CharField(max_length=20, choices=AIMode.choices, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = "interview_messages"
+        indexes = [
+            models.Index(fields=["session", "created_at"], name="message_session_created_idx"),
+        ]
+
+
+class Reflection(models.Model):
+    class AIMode(models.TextChoices):
+        AZURE = "azure", "Azure"
+        FALLBACK = "fallback", "Fallback"
+
+    reflection_id = models.CharField(primary_key=True, max_length=64)
+    session = models.OneToOneField(InterviewSession, on_delete=models.CASCADE, related_name="reflection")
+    strengths = models.TextField()
+    improvements = models.TextField()
+    advice = models.TextField()
+    ai_mode = models.CharField(max_length=20, choices=AIMode.choices)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["created_at"]
-
-
-class FeedbackReport(models.Model):
-    session = models.OneToOneField(PracticeSession, on_delete=models.CASCADE, related_name="feedback_report")
-    strengths = models.JSONField(default=list)
-    improvements = models.JSONField(default=list)
-    next_questions = models.JSONField(default=list)
-    summary = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
-
-
-class QuotaLedger(models.Model):
-    CREDIT = "credit"
-    DEBIT = "debit"
-    KIND_CHOICES = [(CREDIT, "Credit"), (DEBIT, "Debit")]
-
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="quota_entries")
-    kind = models.CharField(max_length=16, choices=KIND_CHOICES)
-    minutes = models.PositiveIntegerField(default=settings.PRACTICE_BLOCK_MINUTES)
-    amount_jpy = models.PositiveIntegerField(default=settings.PRACTICE_BLOCK_PRICE_JPY)
-    stripe_session_id = models.CharField(max_length=200, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        indexes = [models.Index(fields=["user", "created_at"])]
-
+        db_table = "reflections"
