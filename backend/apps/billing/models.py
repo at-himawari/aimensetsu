@@ -26,6 +26,8 @@ class PaymentSession(models.Model):
     payment_session_id = models.CharField(primary_key=True, max_length=64)
     user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="payment_sessions")
     stripe_checkout_session_id = models.CharField(max_length=255, unique=True)
+    idempotency_key = models.CharField(max_length=255, null=True, blank=True, db_index=True)
+    checkout_url = models.URLField(max_length=1000, blank=True, default="")
     status = models.CharField(max_length=20, choices=Status.choices, db_index=True)
     plan_code = models.CharField(max_length=50)
     amount_jpy = models.IntegerField()

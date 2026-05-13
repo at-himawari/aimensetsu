@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    checkout_session_confirm,
     checkout_session_detail,
     checkout_sessions,
     credit_balance,
@@ -14,6 +15,8 @@ urlpatterns = [
     path("credits/transactions", credit_transactions, name="credit-transactions"),
     path("billing/checkout-sessions", checkout_sessions, name="checkout-sessions"),
     path("billing/checkout-sessions/", checkout_sessions, name="checkout-sessions-slash"),
+    path("billing/checkout-sessions/confirm", checkout_session_confirm, name="checkout-session-confirm"),
+    path("billing/checkout-sessions/confirm/", checkout_session_confirm, name="checkout-session-confirm-slash"),
     path(
         "billing/checkout-sessions/<str:session_id>",
         checkout_session_detail,

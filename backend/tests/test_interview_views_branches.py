@@ -132,6 +132,43 @@ class InterviewViewsBranchesTestCase(TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+        response = self.client.post(
+            f"/api/interview-sessions/{session.session_id}/messages",
+            data=json.dumps(
+                {
+                    "record_only": True,
+                    "sender_type": "assistant",
+                    "message": "音声の文字起こし",
+                    "message_type": "voice",
+                }
+            ),
+            content_type="application/json",
+            HTTP_X_DEMO_USER=self.user.user_id,
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            InterviewMessage.objects.filter(
+                session=session,
+                sender_type=InterviewMessage.SenderType.ASSISTANT,
+                content="音声の文字起こし",
+            ).exists()
+        )
+
+        response = self.client.post(
+            f"/api/interview-sessions/{session.session_id}/messages",
+            data=json.dumps(
+                {
+                    "record_only": True,
+                    "sender_type": "invalid",
+                    "message": "bad",
+                    "message_type": "voice",
+                }
+            ),
+            content_type="application/json",
+            HTTP_X_DEMO_USER=self.user.user_id,
+        )
+        self.assertEqual(response.status_code, 400)
+
         with patch("apps.interviews.views.create_message_exchange", side_effect=ValueError("invalid")):
             response = self.client.post(
                 f"/api/interview-sessions/{session.session_id}/messages",

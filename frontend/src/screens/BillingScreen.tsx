@@ -1,11 +1,13 @@
 type BillingScreenProps = {
   availableMinutes: number;
   onBack: () => void;
-  onPurchase: () => void;
+  onPurchase: () => Promise<void> | void;
+  isLoading?: boolean;
+  errorMessage?: string | null;
 };
 
 
-export function BillingScreen({ availableMinutes, onBack, onPurchase }: BillingScreenProps) {
+export function BillingScreen({ availableMinutes, onBack, onPurchase, isLoading = false, errorMessage }: BillingScreenProps) {
   return (
     <section className="screen-card">
       <p className="screen-label">Billing</p>
@@ -16,11 +18,14 @@ export function BillingScreen({ availableMinutes, onBack, onPurchase }: BillingS
         <div>価格: 300円</div>
         <div>追加時間: 30分</div>
       </div>
+      {errorMessage ? <p className="inline-error">{errorMessage}</p> : null}
       <div className="actions">
         <button className="secondary-button" onClick={onBack}>
           ホームへ戻る
         </button>
-        <button className="primary-button" onClick={onPurchase}>Stripe Checkoutへ進む</button>
+        <button className="primary-button" onClick={onPurchase} disabled={isLoading}>
+          {isLoading ? "Checkoutを準備中" : "Stripe Checkoutへ進む"}
+        </button>
       </div>
     </section>
   );

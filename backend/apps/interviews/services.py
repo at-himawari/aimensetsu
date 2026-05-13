@@ -59,8 +59,35 @@ def ensure_sufficient_credits(user: AppUser) -> CreditBalance:
 def build_transcript(session: InterviewSession) -> str:
     lines: list[str] = []
     for message in session.messages.order_by("created_at"):
-        lines.append(f"{message.sender_type}: {message.content}")
+        if message.sender_type == InterviewMessage.SenderType.USER:
+            speaker = "受験生(user)"
+        else:
+            speaker = "面接官AI(assistant)"
+        lines.append(f"{speaker}: {message.content}")
     return "\n".join(lines)
+
+
+def build_interview_prompt(session: InterviewSession, content: str) -> str:
+    parts = [
+        "あなたは日本語の面接練習コーチです。",
+        "候補者の回答に対して、短く具体的なフィードバックと次の質問を返してください。",
+    ]
+
+    if session.job_role:
+        parts.append(f"想定職種: {session.job_role}")
+
+    resume_text = ""
+    if session.resume_id and getattr(session, "resume", None):
+        resume_text = session.resume.extracted_text.strip()
+    if resume_text:
+        parts.append(
+            "候補者の職務経歴書の内容:\n"
+            f"{resume_text[:8000]}\n"
+            "職務経歴書に書かれている経験や成果に基づいて、深掘り質問をしてください。"
+        )
+
+    parts.append(f"候補者の発話:\n{content}")
+    return "\n\n".join(parts)
 
 
 @transaction.atomic
@@ -77,7 +104,7 @@ def create_message_exchange(session: InterviewSession, content: str, message_typ
     )
 
     ai_service = InterviewAIService()
-    ai_reply = ai_service.generate_reply(content)
+    ai_reply = ai_service.generate_reply(build_interview_prompt(session, content))
     assistant_message = InterviewMessage.objects.create(
         message_id=generate_message_id(),
         session=session,

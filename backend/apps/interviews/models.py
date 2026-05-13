@@ -47,6 +47,7 @@ class InterviewMessage(models.Model):
         VOICE = "voice", "Voice"
 
     class AIMode(models.TextChoices):
+        OPENAI = "openai", "OpenAI"
         AZURE = "azure", "Azure"
         FALLBACK = "fallback", "Fallback"
 
@@ -67,6 +68,7 @@ class InterviewMessage(models.Model):
 
 class Reflection(models.Model):
     class AIMode(models.TextChoices):
+        OPENAI = "openai", "OpenAI"
         AZURE = "azure", "Azure"
         FALLBACK = "fallback", "Fallback"
 

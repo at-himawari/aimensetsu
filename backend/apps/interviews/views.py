@@ -12,12 +12,13 @@ from apps.common.responses import json_error, json_success
 from apps.integrations.ai import AIServiceError, OpenAIRealtimeService
 from apps.resumes.models import ResumeFile
 from apps.users.models import AppUser
-from .models import InterviewSession
+from .models import InterviewMessage, InterviewSession
 from .services import (
     complete_session,
     create_message_exchange,
     ensure_sufficient_credits,
     generate_reflection,
+    generate_message_id,
     generate_session_id,
 )
 
@@ -236,7 +237,10 @@ def history_detail(request: HttpRequest, session_id: str):
 def session_messages(request: HttpRequest, session_id: str):
     user = _get_user(request)
     try:
-        session = InterviewSession.objects.prefetch_related("messages").get(session_id=session_id, user=user)
+        session = InterviewSession.objects.prefetch_related("messages").select_related("resume").get(
+            session_id=session_id,
+            user=user,
+        )
     except InterviewSession.DoesNotExist:
         return json_error(request, "NOT_FOUND", "面接セッションが見つかりません。", 404)
 
@@ -263,6 +267,41 @@ def session_messages(request: HttpRequest, session_id: str):
     message_type = payload.get("message_type")
     if not content or not message_type:
         return json_error(request, "INVALID_REQUEST", "message と message_type は必須です。", 400)
+
+    if payload.get("record_only"):
+        sender_type = payload.get("sender_type")
+        if sender_type not in {
+            InterviewMessage.SenderType.USER,
+            InterviewMessage.SenderType.ASSISTANT,
+        }:
+            return json_error(request, "INVALID_REQUEST", "sender_type が不正です。", 400)
+
+        message = InterviewMessage.objects.create(
+            message_id=generate_message_id(),
+            session=session,
+            sender_type=sender_type,
+            message_type=message_type,
+            content=content,
+        )
+        log_audit_event(
+            action_type="record_message",
+            target_type="interview_session",
+            target_id=session.session_id,
+            user=user,
+            metadata={"sender_type": sender_type, "record_only": True},
+        )
+        return json_success(
+            request,
+            {
+                "message": {
+                    "message_id": message.message_id,
+                    "sender_type": message.sender_type,
+                    "message_type": message.message_type,
+                    "content": message.content,
+                },
+            },
+            status=201,
+        )
 
     try:
         user_message, assistant_message, ai_reply = create_message_exchange(session, content, message_type)
@@ -303,7 +342,7 @@ def session_messages(request: HttpRequest, session_id: str):
 def realtime_call(request: HttpRequest, session_id: str):
     user = _get_user(request)
     try:
-        session = InterviewSession.objects.get(session_id=session_id, user=user)
+        session = InterviewSession.objects.select_related("resume").get(session_id=session_id, user=user)
     except InterviewSession.DoesNotExist:
         return json_error(request, "NOT_FOUND", "面接セッションが見つかりません。", 404)
 
@@ -311,8 +350,13 @@ def realtime_call(request: HttpRequest, session_id: str):
         return json_error(request, "INVALID_STATE", "進行中の面接セッションではありません。", 409)
 
     sdp_offer = request.body.decode("utf-8", errors="replace")
+    resume_text = session.resume.extracted_text if session.resume_id and session.resume else None
     try:
-        sdp_answer = OpenAIRealtimeService().create_call_answer(sdp_offer, job_role=session.job_role)
+        sdp_answer = OpenAIRealtimeService().create_call_answer(
+            sdp_offer,
+            job_role=session.job_role,
+            resume_text=resume_text,
+        )
     except AIServiceError as exc:
         return json_error(request, "REALTIME_UNAVAILABLE", str(exc), 503)
 

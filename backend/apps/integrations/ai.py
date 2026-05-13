@@ -37,7 +37,13 @@ class OpenAIRealtimeService:
     def is_configured(self) -> bool:
         return bool(self.api_key)
 
-    def create_call_answer(self, sdp_offer: str, *, job_role: str | None = None) -> str:
+    def create_call_answer(
+        self,
+        sdp_offer: str,
+        *,
+        job_role: str | None = None,
+        resume_text: str | None = None,
+    ) -> str:
         if not self.is_configured():
             raise AIServiceError("openai realtime is not configured")
         if not sdp_offer.strip():
@@ -45,17 +51,21 @@ class OpenAIRealtimeService:
 
         instructions = (
             """
-            リアルタイムの日本語面接練習アシスタントとして、ユーザーと自然な模擬面接を行います。
+            あなたは日本語の模擬面接における面接官です。候補者に対して、終始フォーマルで礼儀正しい口調で面接を進行してください。
 
-            - 必ず敬語で話してください。
+            - 必ず丁寧語・敬語で話してください。
             
-            - 親しみやすく励ますような口調で、温かく自信を持って話します。
+            - タメ口、くだけた表現、過度に親しげな相づちを使わないでください。
 
-            - 明瞭かつ早口で話し、気まずい沈黙を避けるために短い返答を心がけます。
+            - 「いいね」「すごいですね」「そうなんですね」「じゃあ」などのカジュアルな表現は避けてください。
+
+            - 相づちは「承知しました」「ありがとうございます」「確認いたしました」など、面接官として自然な表現にしてください。
+
+            - 明瞭かつ落ち着いた速度で話し、返答は簡潔にしてください。
 
             - 常に会話形式でやり取りし、説明や質問は短い文に分けます。
 
-            - ユーザーが返答したら、すぐに共感的なフィードバックや、必要に応じて追加の質問をします。
+            - 候補者が返答したら、評価しすぎず、必要に応じて追加の確認質問をしてください。
 
             - 面接に適した自然な日本語を使用します。
 
@@ -69,22 +79,22 @@ class OpenAIRealtimeService:
             **ユーザー:** 初めまして。  
             **AI:** 初めまして。お名前を教えていただけますか？  
             **ユーザー:** 田中太郎です。  
-            **AI:** 田中さんですね。よろしくお願いします。  
+            **AI:** 田中様ですね。本日はよろしくお願いいたします。  
             **ユーザー:** よろしくお願いします。  
-            **AI:** では、自己紹介をお願いします。
+            **AI:** それでは、これまでのご経歴を1分程度でお話しいただけますでしょうか。
 
             ## 例 2
             **ユーザー:** 前職では営業をしていました。  
-            **AI:** そうなんですね。どんな商品を営業しましたか？  
+            **AI:** 承知しました。主にどのような商材を担当されていましたか？  
             **ユーザー:** ITサービスです。  
-            **AI:** ITサービスの営業、素晴らしいですね。具体的なエピソードはありますか？  
+            **AI:** ありがとうございます。担当されたITサービスについて、具体的な実績を教えていただけますか？  
             **ユーザー:** 新規顧客を獲得したことがあります。  
-            **AI:** すごいですね。その時、工夫したことは何ですか？
+            **AI:** その際、成果につながった工夫を具体的に教えてください。
 
             # 注記
 
-            - 応答は常に簡潔かつ自然に聞こえるようにしてください。
-            - ユーザーが自信がなかったり、立ち止まったりした場合は、穏やかに促すか励ましを与えてください。
+            - 応答は常に簡潔かつフォーマルに聞こえるようにしてください。
+            - 候補者が立ち止まった場合は、落ち着いた口調で質問を言い換えてください。
             - 一度にあまりにも多くの質問をカバーすることは避け、ターンごとに 1 つのポイントに集中してください。
             ・自己紹介、志望動機、強み・弱みなど、様々な面接トピックに関するユーザーの練習をサポートします。
             ・ユーザーが面接の方向性を決められるようにし、柔軟に対応します。
@@ -94,6 +104,12 @@ class OpenAIRealtimeService:
         )
         if job_role:
             instructions += f" 想定職種は{job_role}です。"
+        if resume_text:
+            instructions += (
+                "\n\n# 候補者の職務経歴書\n"
+                f"{resume_text.strip()[:8000]}\n"
+                "この職務経歴書の内容を踏まえて、経験・成果・使った技術・意思決定を自然に深掘りしてください。"
+            )
 
         session_config = {
             "type": "realtime",
@@ -223,6 +239,109 @@ class AzureOpenAIService:
         )
 
 
+class OpenAITextService:
+    def __init__(self):
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.model = os.getenv("OPENAI_REFLECTION_MODEL", "gpt-4.1-mini")
+        self.timeout_seconds = float(os.getenv("OPENAI_REFLECTION_TIMEOUT_SECONDS", "12"))
+        self.responses_url = os.getenv("OPENAI_RESPONSES_URL", "https://api.openai.com/v1/responses")
+
+    def is_configured(self) -> bool:
+        return bool(self.api_key)
+
+    def generate_reflection(self, transcript: str) -> ReflectionResult:
+        if not self.is_configured():
+            raise AIServiceError("openai text is not configured")
+
+        payload = {
+            "model": self.model,
+            "instructions": (
+                "あなたは日本語の面接コーチです。"
+                "模擬面接の会話履歴を読み、受験生だけを評価してください。"
+                "会話履歴では「受験生(user)」が評価対象で、「面接官AI(assistant)」は質問者です。"
+                "面接官AIの発言内容や態度を、受験生の良かった点・改善点として扱ってはいけません。"
+                "もし受験生の発話が少ない場合は、発話量が少ないことを改善点にしてください。"
+                "形式: {\"strengths\":[\"...\"],\"improvements\":[\"...\"],\"advice\":\"...\"}"
+            ),
+            "input": (
+                "次の面接練習を振り返ってください。"
+                "必ず受験生(user)の発話のみを評価対象にしてください。"
+                "strengthsは2件、improvementsは2件、adviceは次回に向けた短い助言にしてください。\n\n"
+                f"{transcript}"
+            ),
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "interview_reflection",
+                    "schema": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "strengths": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "minItems": 1,
+                                "maxItems": 3,
+                            },
+                            "improvements": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "minItems": 1,
+                                "maxItems": 3,
+                            },
+                            "advice": {"type": "string"},
+                        },
+                        "required": ["strengths", "improvements", "advice"],
+                    },
+                    "strict": True,
+                },
+            },
+        }
+        req = request.Request(
+            self.responses_url,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+            },
+            method="POST",
+        )
+
+        try:
+            with request.urlopen(req, timeout=self.timeout_seconds) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except (error.URLError, error.HTTPError, TimeoutError, json.JSONDecodeError) as exc:
+            raise AIServiceError(str(exc)) from exc
+
+        output_text = self._extract_output_text(body)
+        if not output_text:
+            raise AIServiceError("openai response content is empty")
+
+        try:
+            parsed = json.loads(output_text)
+        except json.JSONDecodeError as exc:
+            raise AIServiceError("openai reflection response is not JSON") from exc
+
+        return ReflectionResult(
+            strengths=list(parsed.get("strengths") or [])[:3] or ["具体的な経験に触れられていた"],
+            improvements=list(parsed.get("improvements") or [])[:3] or ["結論から先に答えるとより良い"],
+            advice=str(parsed.get("advice") or "回答の最初に要点をまとめることを意識してください。"),
+            ai_mode="openai",
+        )
+
+    @staticmethod
+    def _extract_output_text(body: dict) -> str:
+        if body.get("output_text"):
+            return str(body["output_text"])
+
+        chunks: list[str] = []
+        for item in body.get("output") or []:
+            for content in item.get("content") or []:
+                if content.get("type") in {"output_text", "text"} and content.get("text"):
+                    chunks.append(str(content["text"]))
+        return "".join(chunks)
+
+
 class LocalFallbackAIService:
     DEFAULT_REPLY = "ありがとうございます。では次に、これまでの経験の中で最も成果を出した取り組みを教えてください。"
 
@@ -236,6 +355,8 @@ class LocalFallbackAIService:
             content = "あなたの強みを、実際のエピソードを交えて教えてください。"
         elif "weakness" in lower_prompt or "弱み" in prompt:
             content = "ご自身の課題だと思っている点と、それにどう向き合っているかを教えてください。"
+        elif "職務経歴書" in prompt:
+            content = "職務経歴書の内容を踏まえて、特に成果につながった経験を一つ選び、背景と工夫を教えてください。"
         else:
             content = self.DEFAULT_REPLY
 
@@ -252,6 +373,7 @@ class LocalFallbackAIService:
 
 class InterviewAIService:
     def __init__(self):
+        self.openai = OpenAITextService()
         self.azure = AzureOpenAIService()
         self.fallback = LocalFallbackAIService()
 
@@ -262,6 +384,11 @@ class InterviewAIService:
             return self.fallback.generate_reply(prompt)
 
     def generate_reflection(self, transcript: str) -> ReflectionResult:
+        try:
+            return self.openai.generate_reflection(transcript)
+        except AIServiceError:
+            pass
+
         try:
             return self.azure.generate_reflection(transcript)
         except AIServiceError:

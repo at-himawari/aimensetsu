@@ -13,6 +13,7 @@ class ResumeFile(models.Model):
     file_path = models.CharField(max_length=500, db_index=True)
     content_type = models.CharField(max_length=100)
     file_size = models.BigIntegerField()
+    extracted_text = models.TextField(blank=True, default="")
     uploaded_at = models.DateTimeField(auto_now_add=True)
     deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
 

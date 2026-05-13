@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from io import BytesIO
 from unittest.mock import patch
 
@@ -7,7 +8,13 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 
 from apps.resumes.models import ResumeFile
-from apps.resumes.services import build_resume_key, generate_resume_id, upload_resume_file, validate_resume_file
+from apps.resumes.services import (
+    _extract_pdf_text_without_dependency,
+    build_resume_key,
+    generate_resume_id,
+    upload_resume_file,
+    validate_resume_file,
+)
 from apps.users.models import AppUser
 
 
@@ -26,9 +33,15 @@ class ResumesServicesAndViewsBranchesTestCase(TestCase):
         self.assertEqual(build_resume_key("u1", "r1", "resume.pdf"), "resumes/u1/r1/resume.pdf")
         with self.assertRaises(ValueError):
             validate_resume_file(SimpleUploadedFile("bad.txt", b"x", content_type="text/plain"))
-        with self.assertRaises(ValueError):
-            validate_resume_file(SimpleUploadedFile("big.pdf", b"x" * (10 * 1024 * 1024 + 1), content_type="application/pdf"))
+        with self.assertRaisesMessage(ValueError, "50MB 以下"):
+            validate_resume_file(SimpleUploadedFile("big.pdf", b"x" * (50 * 1024 * 1024 + 1), content_type="application/pdf"))
 
+    def test_extract_pdf_text_without_dependency_reads_simple_pdf_text(self):
+        pdf_bytes = b"BT /F1 12 Tf (Backend API improvement) Tj [(Python) 120 (Django)] TJ ET"
+        self.assertIn("Backend API improvement", _extract_pdf_text_without_dependency(pdf_bytes))
+        self.assertIn("Python", _extract_pdf_text_without_dependency(pdf_bytes))
+
+    @patch.dict(os.environ, {"S3_BUCKET_NAME": "bucket"})
     @patch("apps.resumes.services.S3StorageClient.upload_fileobj")
     def test_upload_resume_file(self, mocked_upload):
         uploaded = SimpleUploadedFile("resume.pdf", b"pdf", content_type="application/pdf")
@@ -36,14 +49,16 @@ class ResumesServicesAndViewsBranchesTestCase(TestCase):
         self.assertEqual(key, "resumes/u1/r1/resume.pdf")
         mocked_upload.assert_called_once()
 
+    @patch("apps.resumes.views.extract_resume_text", return_value="")
     @patch("apps.resumes.views.upload_resume_file", side_effect=Exception("s3 fail"))
-    def test_resume_upload_returns_503_on_s3_error(self, _mocked_upload):
+    def test_resume_upload_returns_503_on_s3_error(self, _mocked_upload, _mocked_extract):
         uploaded = SimpleUploadedFile("resume.pdf", b"pdf", content_type="application/pdf")
         response = self.client.post("/api/resumes", {"file": uploaded}, HTTP_X_DEMO_USER=self.user.user_id)
         self.assertEqual(response.status_code, 503)
 
+    @patch("apps.resumes.views.extract_resume_text", return_value="My resume text")
     @patch("apps.resumes.views.upload_resume_file", return_value="resumes/u/r/resume.pdf")
-    def test_resume_upload_and_list_and_delete(self, _mocked_upload):
+    def test_resume_upload_and_list_and_delete(self, _mocked_upload, _mocked_extract):
         uploaded = SimpleUploadedFile("resume.pdf", b"pdf", content_type="application/pdf")
         create = self.client.post(
             "/api/resumes",

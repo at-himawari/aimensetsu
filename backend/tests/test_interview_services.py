@@ -8,6 +8,7 @@ from django.utils import timezone
 from apps.billing.models import CreditBalance, CreditTransaction
 from apps.integrations.ai import AIReply, ReflectionResult
 from apps.interviews.models import InterviewMessage, InterviewSession, Reflection
+from apps.resumes.models import ResumeFile
 from apps.interviews.services import (
     build_transcript,
     complete_session,
@@ -50,7 +51,7 @@ class InterviewServicesTestCase(TestCase):
             message_type=InterviewMessage.MessageType.TEXT,
             content="B",
         )
-        self.assertEqual(build_transcript(session), "user: A\nassistant: B")
+        self.assertEqual(build_transcript(session), "受験生(user): A\n面接官AI(assistant): B")
 
     def test_create_message_exchange_rejects_non_active_session(self):
         session = InterviewSession.objects.create(
@@ -79,6 +80,36 @@ class InterviewServicesTestCase(TestCase):
         session.refresh_from_db()
         self.assertEqual(assistant_message.ai_mode, "fallback")
         self.assertTrue(session.used_fallback)
+
+    @patch("apps.interviews.services.InterviewAIService.generate_reply")
+    def test_create_message_exchange_includes_resume_context(self, mocked_reply):
+        mocked_reply.return_value = AIReply(content="reply", ai_mode="azure", used_fallback=False)
+        resume = ResumeFile.objects.create(
+            resume_id="res_context",
+            user=self.user,
+            title="resume.pdf",
+            file_name="resume.pdf",
+            file_path="resumes/resume.pdf",
+            content_type="application/pdf",
+            file_size=123,
+            extracted_text="SRE と Django の運用改善を担当しました。",
+        )
+        session = InterviewSession.objects.create(
+            session_id="ses_resume_prompt",
+            user=self.user,
+            resume=resume,
+            status=InterviewSession.Status.ACTIVE,
+            mode="general",
+            job_role="Backend Engineer",
+            started_at=timezone.now(),
+        )
+
+        create_message_exchange(session, "自己紹介します", InterviewMessage.MessageType.TEXT)
+
+        prompt = mocked_reply.call_args.args[0]
+        self.assertIn("Backend Engineer", prompt)
+        self.assertIn("SRE と Django", prompt)
+        self.assertIn("自己紹介します", prompt)
 
     def test_generate_reflection_rejects_non_completed_session(self):
         session = InterviewSession.objects.create(

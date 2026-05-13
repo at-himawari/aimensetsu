@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "../state/auth";
+import { LoadingState } from "../ui/LoadingState";
 
 
 type SessionScreenProps = {
-  onFinish: () => void;
+  resumeId: string | null;
+  resumeFileName?: string | null;
+  onFinish: (reflection?: SessionReflection | null) => void;
   onBilling: () => void;
 };
 
@@ -14,6 +17,12 @@ type SessionCreateResponse = {
   data: {
     session_id: string;
   };
+};
+
+type SessionReflection = {
+  strengths: string[];
+  improvements: string[];
+  advice: string;
 };
 
 type ConversationLogEntry = {
@@ -44,27 +53,37 @@ type RealtimeEventPayload = {
 };
 
 
-export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
+export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }: SessionScreenProps) {
   const { authState } = useAuth();
   const peerRef = useRef<RTCPeerConnection | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const pendingMessageSavesRef = useRef<Array<Promise<void>>>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const localAudioTrackRef = useRef<MediaStreamTrack | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const conversationLogRef = useRef<HTMLDivElement | null>(null);
   const shouldMuteDuringAssistantSpeechRef = useRef(true);
-  const assistantSpeechTimeoutRef = useRef<number | null>(null);
+  const isAssistantSpeakingRef = useRef(false);
+  const assistantSpeechFallbackTimeoutRef = useRef<number | null>(null);
+  const assistantMuteReleaseTimeoutRef = useRef<number | null>(null);
   const [status, setStatus] = useState<RealtimeStatus>("idle");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([
     "プレビュー準備完了。マイク接続を開始できます。",
   ]);
+  const [connectionStep, setConnectionStep] = useState("プレビュー準備完了。マイク接続を開始できます。");
   const [conversationLog, setConversationLog] = useState<ConversationLogEntry[]>([]);
   const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(false);
   const [shouldMuteDuringAssistantSpeech, setShouldMuteDuringAssistantSpeech] = useState(true);
 
   const appendEvent = (message: string) => {
     setEvents((currentEvents) => [message, ...currentEvents].slice(0, 6));
+  };
+
+  const updateConnectionStep = (message: string) => {
+    setConnectionStep(message);
+    appendEvent(message);
   };
 
   useEffect(() => {
@@ -82,8 +101,11 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
 
   useEffect(() => {
     return () => {
-      if (assistantSpeechTimeoutRef.current !== null) {
-        window.clearTimeout(assistantSpeechTimeoutRef.current);
+      if (assistantSpeechFallbackTimeoutRef.current !== null) {
+        window.clearTimeout(assistantSpeechFallbackTimeoutRef.current);
+      }
+      if (assistantMuteReleaseTimeoutRef.current !== null) {
+        window.clearTimeout(assistantMuteReleaseTimeoutRef.current);
       }
     };
   }, []);
@@ -127,22 +149,51 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
     });
   };
 
-  const setAssistantSpeaking = (nextIsSpeaking: boolean) => {
-    if (assistantSpeechTimeoutRef.current !== null) {
-      window.clearTimeout(assistantSpeechTimeoutRef.current);
-      assistantSpeechTimeoutRef.current = null;
-    }
-
-    setIsAssistantSpeaking(nextIsSpeaking);
+  const setLocalMicrophoneEnabled = (isEnabled: boolean) => {
     const localAudioTrack = localAudioTrackRef.current;
     if (localAudioTrack && shouldMuteDuringAssistantSpeechRef.current) {
-      localAudioTrack.enabled = !nextIsSpeaking;
+      localAudioTrack.enabled = isEnabled;
     }
+  };
+
+  const setAssistantSpeaking = (nextIsSpeaking: boolean, options: { releaseDelayMs?: number } = {}) => {
+    if (assistantMuteReleaseTimeoutRef.current !== null) {
+      window.clearTimeout(assistantMuteReleaseTimeoutRef.current);
+      assistantMuteReleaseTimeoutRef.current = null;
+    }
+    isAssistantSpeakingRef.current = nextIsSpeaking;
+    setIsAssistantSpeaking(nextIsSpeaking);
 
     if (nextIsSpeaking) {
-      assistantSpeechTimeoutRef.current = window.setTimeout(() => {
-        setAssistantSpeaking(false);
+      if (assistantSpeechFallbackTimeoutRef.current !== null) {
+        window.clearTimeout(assistantSpeechFallbackTimeoutRef.current);
+      }
+      setLocalMicrophoneEnabled(false);
+      assistantSpeechFallbackTimeoutRef.current = window.setTimeout(() => {
+        setAssistantSpeaking(false, { releaseDelayMs: 2500 });
       }, 30000);
+      return;
+    }
+
+    if (assistantSpeechFallbackTimeoutRef.current !== null) {
+      window.clearTimeout(assistantSpeechFallbackTimeoutRef.current);
+      assistantSpeechFallbackTimeoutRef.current = null;
+    }
+
+    assistantMuteReleaseTimeoutRef.current = window.setTimeout(() => {
+      setLocalMicrophoneEnabled(true);
+      assistantMuteReleaseTimeoutRef.current = null;
+    }, options.releaseDelayMs ?? 2500);
+  };
+
+  const releaseAssistantMute = () => {
+    if (isAssistantSpeakingRef.current) {
+      setAssistantSpeaking(false, { releaseDelayMs: 2500 });
+    } else if (assistantMuteReleaseTimeoutRef.current === null) {
+      assistantMuteReleaseTimeoutRef.current = window.setTimeout(() => {
+        setLocalMicrophoneEnabled(true);
+        assistantMuteReleaseTimeoutRef.current = null;
+      }, 2500);
     }
   };
 
@@ -161,11 +212,9 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
     if (
       type === "response.audio.done" ||
       type === "response.output_audio.done" ||
-      type === "response.output_audio_transcript.done" ||
-      type === "response.audio_transcript.done" ||
       type === "response.done"
     ) {
-      setAssistantSpeaking(false);
+      releaseAssistantMute();
     }
 
     if (type === "conversation.item.input_audio_transcription.delta" && data.delta) {
@@ -178,6 +227,7 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
 
     if (type === "conversation.item.input_audio_transcription.completed" && data.transcript) {
       upsertConversationLog(data.item_id ?? `user-${Date.now()}`, "user", data.transcript);
+      void saveRealtimeMessage("user", data.transcript);
       return;
     }
 
@@ -200,6 +250,7 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
         data.content_index ?? 0,
       ].join("-");
       upsertConversationLog(key, "assistant", data.transcript);
+      void saveRealtimeMessage("assistant", data.transcript);
       return;
     }
 
@@ -212,7 +263,9 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
     }
 
     if ((type === "response.output_text.done" || type === "response.text.done") && (data.text || data.transcript)) {
-      upsertConversationLog(data.response_id ?? `assistant-${Date.now()}`, "assistant", data.text ?? data.transcript ?? "");
+      const content = data.text ?? data.transcript ?? "";
+      upsertConversationLog(data.response_id ?? `assistant-${Date.now()}`, "assistant", content);
+      void saveRealtimeMessage("assistant", content);
       return;
     }
 
@@ -238,6 +291,31 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
     return headers;
   };
 
+  const saveRealtimeMessage = async (speaker: ConversationLogEntry["speaker"], content: string) => {
+    const currentSessionId = sessionIdRef.current;
+    if (!currentSessionId || !content.trim()) {
+      return;
+    }
+
+    const headers = authHeaders();
+    headers.set("Content-Type", "application/json");
+    const savePromise = fetch(`/api/interview-sessions/${currentSessionId}/messages`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        record_only: true,
+        sender_type: speaker === "assistant" ? "assistant" : "user",
+        message_type: "voice",
+        message: content,
+      }),
+    }).then(() => undefined).catch(() => undefined);
+    pendingMessageSavesRef.current.push(savePromise);
+    savePromise.finally(() => {
+      pendingMessageSavesRef.current = pendingMessageSavesRef.current.filter((promise) => promise !== savePromise);
+    });
+    await savePromise;
+  };
+
   const createInterviewSession = async () => {
     const headers = authHeaders();
     headers.set("Content-Type", "application/json");
@@ -247,6 +325,7 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
       body: JSON.stringify({
         mode: "voice",
         job_role: "Webアプリケーションエンジニア",
+        resume_id: resumeId,
       }),
     });
 
@@ -263,13 +342,14 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
     setStatus("starting");
     setErrorMessage(null);
     setConversationLog([]);
-    appendEvent("面接セッションを作成しています。");
+    updateConnectionStep("面接セッションを作成しています。");
 
     try {
       const nextSessionId = sessionId ?? (await createInterviewSession());
       setSessionId(nextSessionId);
+      sessionIdRef.current = nextSessionId;
 
-      appendEvent("マイク権限を確認しています。");
+      updateConnectionStep("マイク権限を確認しています。");
       const localStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -279,15 +359,26 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
       });
       streamRef.current = localStream;
       localAudioTrackRef.current = localStream.getAudioTracks()[0] ?? null;
+      setLocalMicrophoneEnabled(false);
 
       const peer = new RTCPeerConnection();
       peerRef.current = peer;
+      updateConnectionStep("音声接続を準備しています。");
       localStream.getTracks().forEach((track) => {
         peer.addTrack(track, localStream);
       });
 
       const audio = new Audio();
       audio.autoplay = true;
+      audio.onplaying = () => {
+        setAssistantSpeaking(true);
+      };
+      audio.onpause = () => {
+        releaseAssistantMute();
+      };
+      audio.onended = () => {
+        releaseAssistantMute();
+      };
       audioRef.current = audio;
       peer.ontrack = (event) => {
         audio.srcObject = event.streams[0];
@@ -296,12 +387,12 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
 
       const channel = peer.createDataChannel("oai-events");
       channel.onopen = () => {
-        appendEvent("gpt-realtime-2 とのイベントチャンネルを開きました。");
+        appendEvent("AIとのイベントチャンネルを開きました。");
         setAssistantSpeaking(true);
         channel.send(JSON.stringify({
           type: "response.create",
           response: {
-            instructions: "短く挨拶してから、自己紹介を促してください。",
+            instructions: "面接官としてフォーマルに短く挨拶し、これまでの経歴を1分程度で話すよう丁寧に促してください。タメ口やカジュアルな相づちは使わないでください。",
           },
         }));
       };
@@ -319,7 +410,7 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
 
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
-      appendEvent("OpenAI Realtime APIへ接続しています。");
+      updateConnectionStep("AI音声セッションへ接続しています。");
 
       const headers = authHeaders();
       headers.set("Content-Type", "application/sdp");
@@ -335,9 +426,10 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
       }
 
       const answerSdp = await response.text();
+      updateConnectionStep("接続応答を受け取り、音声を開始しています。");
       await peer.setRemoteDescription({ type: "answer", sdp: answerSdp });
       setStatus("connected");
-      appendEvent("接続完了。音声で面接練習を始められます。");
+      updateConnectionStep("接続完了。音声で面接練習を始められます。");
     } catch (error) {
       stopRealtimePreview();
       const message = error instanceof Error ? error.message : "Realtimeプレビューを開始できませんでした。";
@@ -348,9 +440,13 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
   };
 
   const stopRealtimePreview = () => {
-    if (assistantSpeechTimeoutRef.current !== null) {
-      window.clearTimeout(assistantSpeechTimeoutRef.current);
-      assistantSpeechTimeoutRef.current = null;
+    if (assistantSpeechFallbackTimeoutRef.current !== null) {
+      window.clearTimeout(assistantSpeechFallbackTimeoutRef.current);
+      assistantSpeechFallbackTimeoutRef.current = null;
+    }
+    if (assistantMuteReleaseTimeoutRef.current !== null) {
+      window.clearTimeout(assistantMuteReleaseTimeoutRef.current);
+      assistantMuteReleaseTimeoutRef.current = null;
     }
     peerRef.current?.close();
     peerRef.current = null;
@@ -361,25 +457,46 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
       audioRef.current.srcObject = null;
       audioRef.current = null;
     }
+    isAssistantSpeakingRef.current = false;
     setIsAssistantSpeaking(false);
     setStatus((currentStatus) => currentStatus === "connected" ? "idle" : currentStatus);
   };
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
     stopRealtimePreview();
-    onFinish();
+    const currentSessionId = sessionIdRef.current;
+    let reflection: SessionReflection | null = null;
+    if (currentSessionId) {
+      await Promise.allSettled(pendingMessageSavesRef.current);
+      const headers = authHeaders();
+      await fetch(`/api/interview-sessions/${currentSessionId}/complete`, {
+        method: "POST",
+        headers,
+      }).catch(() => undefined);
+      const reflectionResponse = await fetch(`/api/interview-sessions/${currentSessionId}/reflection`, {
+        method: "POST",
+        headers,
+      }).catch(() => undefined);
+      if (reflectionResponse?.ok) {
+        const body = await reflectionResponse.json().catch(() => null);
+        reflection = body?.data ?? null;
+      }
+    }
+    onFinish(reflection);
   };
 
   const isStarting = status === "starting";
   const isConnected = status === "connected";
+  const shouldShowConnectionLog = import.meta.env.DEV;
 
   return (
     <section className="screen-card session-screen-card">
       <div className="session-top-row">
         <div>
           <p className="screen-label">Realtime Preview</p>
-          <h2>gpt-realtime-2 面接練習</h2>
+          <h2>面接練習</h2>
           <p className="section-note">マイクで話すと、AI面接コーチが音声で返答します。</p>
+          {resumeFileName ? <p className="section-note">使用レジュメ: {resumeFileName}</p> : null}
           <label className="audio-guard-toggle">
             <input
               type="checkbox"
@@ -411,13 +528,19 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
             <p className="section-note">
               {isAssistantSpeaking && shouldMuteDuringAssistantSpeech
                 ? "AI応答中: マイク一時ミュート"
-                : "Model: gpt-realtime-2 / Voice: marin"}
+                : "Voice: marin"}
             </p>
           </div>
         </div>
       </div>
 
       {errorMessage ? <p className="inline-error">{errorMessage}</p> : null}
+      {isStarting ? (
+        <LoadingState
+          title="接続準備中"
+          body={connectionStep}
+        />
+      ) : null}
 
       <div className="conversation-box session-conversation-log" aria-live="polite" ref={conversationLogRef}>
         <p className="conversation-heading">対話ログ</p>
@@ -439,12 +562,14 @@ export function SessionScreen({ onFinish, onBilling }: SessionScreenProps) {
         )}
       </div>
 
-      <div className="conversation-box realtime-log">
-        <p className="conversation-heading">接続ログ</p>
-        {events.map((event, index) => (
-          <p key={`${event}-${index}`}>{event}</p>
-        ))}
-      </div>
+      {shouldShowConnectionLog ? (
+        <div className="conversation-box realtime-log">
+          <p className="conversation-heading">接続ログ</p>
+          {events.map((event, index) => (
+            <p key={`${event}-${index}`}>{event}</p>
+          ))}
+        </div>
+      ) : null}
 
       <div className="actions">
         {!isConnected ? (

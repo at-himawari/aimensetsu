@@ -21,6 +21,7 @@ class BillingServiceBranchesTestCase(TestCase):
             role=AppUser.Role.USER,
         )
         os.environ["STRIPE_WEBHOOK_SECRET"] = "test-webhook-secret"
+        os.environ["STRIPE_ALLOW_FAKE_CHECKOUT"] = "true"
 
     def test_create_checkout_session_rejects_invalid_inputs(self):
         with self.assertRaisesMessage(ValueError, "plan_code"):

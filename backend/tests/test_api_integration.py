@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import os
 from hashlib import sha256
 from unittest.mock import patch
 
@@ -18,6 +19,7 @@ class APIIntegrationTests(TestCase):
         self.client = Client()
         self.user_id = "api_user"
         self.headers = {"HTTP_X_DEMO_USER": self.user_id}
+        os.environ["STRIPE_ALLOW_FAKE_CHECKOUT"] = "true"
 
     def _login(self) -> dict:
         response = self.client.post(
@@ -163,6 +165,7 @@ class APIIntegrationTests(TestCase):
         )
         self.assertEqual(checkout_response.status_code, 201)
         payment_session_id = checkout_response.json()["data"]["payment_session_id"]
+        checkout_session_id = checkout_response.json()["data"]["checkout_session_id"]
 
         detail_response = self.client.get(
             f"/api/billing/checkout-sessions/{payment_session_id}",
@@ -173,7 +176,7 @@ class APIIntegrationTests(TestCase):
 
         payload = json.dumps({
             "type": "checkout.session.completed",
-            "data": {"object": {"id": "idem_api"}},
+            "data": {"object": {"id": checkout_session_id}},
         }).encode("utf-8")
         signature = hmac.new(b"test-webhook-secret", payload, sha256).hexdigest()
         webhook_response = self.client.post(
@@ -184,6 +187,10 @@ class APIIntegrationTests(TestCase):
         )
         self.assertEqual(webhook_response.status_code, 200)
         self.assertEqual(webhook_response.json()["data"]["status"], "reflected")
+
+        balance_after_webhook = self.client.get("/api/credits/balance", **self.headers)
+        self.assertEqual(balance_after_webhook.status_code, 200)
+        self.assertEqual(balance_after_webhook.json()["data"]["available_minutes"], 30)
 
         transactions_response = self.client.get("/api/credits/transactions", **self.headers)
         self.assertEqual(transactions_response.status_code, 200)

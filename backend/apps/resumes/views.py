@@ -8,7 +8,13 @@ from apps.common.auth import require_principal
 from apps.common.responses import json_error, json_success
 from apps.users.models import AppUser
 from .models import ResumeFile
-from .services import generate_resume_id, upload_resume_file, validate_resume_file
+from .services import (
+    MAX_RESUME_FILE_SIZE_BYTES,
+    extract_resume_text,
+    generate_resume_id,
+    upload_resume_file,
+    validate_resume_file,
+)
 
 
 def _serialize_resume(resume: ResumeFile) -> dict:
@@ -19,6 +25,8 @@ def _serialize_resume(resume: ResumeFile) -> dict:
         "file_path": resume.file_path,
         "content_type": resume.content_type,
         "file_size": resume.file_size,
+        "has_extracted_text": bool(resume.extracted_text.strip()),
+        "extracted_text_preview": resume.extracted_text[:240],
         "uploaded_at": resume.uploaded_at.isoformat(),
         "deleted_at": resume.deleted_at.isoformat() if resume.deleted_at else None,
     }
@@ -41,10 +49,11 @@ def resumes(request: HttpRequest):
     try:
         validate_resume_file(uploaded_file)
     except ValueError as exc:
-        error_code = "FILE_TOO_LARGE" if uploaded_file.size > 10 * 1024 * 1024 else "INVALID_FILE_TYPE"
+        error_code = "FILE_TOO_LARGE" if uploaded_file.size > MAX_RESUME_FILE_SIZE_BYTES else "INVALID_FILE_TYPE"
         return json_error(request, error_code, str(exc), 400)
 
     resume_id = generate_resume_id()
+    extracted_text = extract_resume_text(uploaded_file)
     try:
         file_path = upload_resume_file(request.principal.user_id, resume_id, uploaded_file)
     except Exception:  # noqa: BLE001
@@ -58,6 +67,7 @@ def resumes(request: HttpRequest):
         file_path=file_path,
         content_type=uploaded_file.content_type,
         file_size=uploaded_file.size,
+        extracted_text=extracted_text,
     )
     user = AppUser.objects.get(user_id=request.principal.user_id)
     log_audit_event(

@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from apps.billing.models import CreditBalance
 from apps.interviews.models import InterviewSession
+from apps.resumes.models import ResumeFile
 from apps.users.models import AppUser
 
 
@@ -75,9 +76,20 @@ class InterviewViewsTestCase(TestCase):
     def test_realtime_call_returns_sdp_answer(self, mocked_service_class):
         mocked_service = mocked_service_class.return_value
         mocked_service.create_call_answer.return_value = "answer-sdp"
+        resume = ResumeFile.objects.create(
+            resume_id="res_realtime",
+            user=self.user,
+            title="resume.pdf",
+            file_name="resume.pdf",
+            file_path="resumes/resume.pdf",
+            content_type="application/pdf",
+            file_size=123,
+            extracted_text="Python API の改善経験があります。",
+        )
         session = InterviewSession.objects.create(
             session_id="ses_realtime",
             user=self.user,
+            resume=resume,
             status=InterviewSession.Status.ACTIVE,
             mode="voice",
             job_role="Backend Engineer",
@@ -93,7 +105,11 @@ class InterviewViewsTestCase(TestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.content.decode("utf-8"), "answer-sdp")
-        mocked_service.create_call_answer.assert_called_once_with("offer-sdp", job_role="Backend Engineer")
+        mocked_service.create_call_answer.assert_called_once_with(
+            "offer-sdp",
+            job_role="Backend Engineer",
+            resume_text="Python API の改善経験があります。",
+        )
 
     def test_history_list_requires_auth(self):
         response = self.client.get("/api/history")

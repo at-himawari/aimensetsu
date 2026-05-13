@@ -8,7 +8,13 @@ from urllib.error import URLError
 
 from django.test import TestCase
 
-from apps.integrations.ai import AIServiceError, AzureOpenAIService, LocalFallbackAIService, OpenAIRealtimeService
+from apps.integrations.ai import (
+    AIServiceError,
+    AzureOpenAIService,
+    LocalFallbackAIService,
+    OpenAIRealtimeService,
+    OpenAITextService,
+)
 from apps.integrations.storage import S3StorageClient
 
 
@@ -55,6 +61,39 @@ class IntegrationsAIAndStorageTestCase(TestCase):
         self.assertEqual(result.improvements, ["改善1", "改善2"])
         self.assertEqual(result.advice, "アドバイス")
 
+    @patch("apps.integrations.ai.request.urlopen")
+    def test_openai_generate_reflection_uses_responses_api(self, mocked_urlopen):
+        os.environ["OPENAI_API_KEY"] = "key"
+        mocked_response = MagicMock()
+        mocked_response.read.return_value = json.dumps(
+            {
+                "output_text": json.dumps(
+                    {
+                        "strengths": ["強み1", "強み2"],
+                        "improvements": ["改善1", "改善2"],
+                        "advice": "次回アドバイス",
+                    },
+                    ensure_ascii=False,
+                )
+            }
+        ).encode("utf-8")
+        mocked_urlopen.return_value.__enter__.return_value = mocked_response
+
+        result = OpenAITextService().generate_reflection("user: hello")
+
+        self.assertEqual(result.ai_mode, "openai")
+        self.assertEqual(result.strengths, ["強み1", "強み2"])
+        self.assertEqual(result.improvements, ["改善1", "改善2"])
+        self.assertEqual(result.advice, "次回アドバイス")
+        req = mocked_urlopen.call_args.args[0]
+        self.assertEqual(req.full_url, "https://api.openai.com/v1/responses")
+        self.assertEqual(req.headers["Authorization"], "Bearer key")
+        payload = json.loads(req.data.decode("utf-8"))
+        self.assertEqual(payload["model"], "gpt-4.1-mini")
+        self.assertIn("受験生(user)", payload["instructions"])
+        self.assertIn("面接官AI(assistant)", payload["instructions"])
+        self.assertIn("受験生(user)の発話のみ", payload["input"])
+
     def test_local_fallback_reply_variants(self):
         service = LocalFallbackAIService()
         self.assertIn("ご経歴", service.generate_reply("自己紹介").content)
@@ -78,7 +117,11 @@ class IntegrationsAIAndStorageTestCase(TestCase):
         mocked_urlopen.return_value.__enter__.return_value = mocked_response
 
         service = OpenAIRealtimeService()
-        answer = service.create_call_answer("v=0", job_role="Backend Engineer")
+        answer = service.create_call_answer(
+            "v=0",
+            job_role="Backend Engineer",
+            resume_text="Python API の改善経験があります。",
+        )
 
         self.assertEqual(answer, "answer-sdp")
         req = mocked_urlopen.call_args.args[0]
@@ -88,6 +131,7 @@ class IntegrationsAIAndStorageTestCase(TestCase):
         self.assertIn(b"gpt-realtime-2", req.data)
         self.assertIn(b"gpt-4o-transcribe", req.data)
         self.assertIn(b'"language": "ja"', req.data)
+        self.assertIn("Python API".encode("utf-8"), req.data)
 
     @patch("apps.integrations.storage.boto3.client")
     def test_s3_storage_upload_fileobj(self, mocked_client):

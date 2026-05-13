@@ -1,9 +1,13 @@
 import { useId, useState, type ChangeEvent } from "react";
 
 
+const MAX_RESUME_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+const MAX_RESUME_FILE_SIZE_MB = MAX_RESUME_FILE_SIZE_BYTES / 1024 / 1024;
+
 type ResumeItem = {
   id: string;
   fileName: string;
+  hasExtractedText?: boolean;
 };
 
 type ResumeScreenProps = {
@@ -11,9 +15,11 @@ type ResumeScreenProps = {
   selectedResumeId: string | null;
   onBack: () => void;
   onStart: () => void;
-  onDelete: (resumeId: string) => void;
+  onDelete: (resumeId: string) => Promise<void> | void;
   onSelect: (resumeId: string) => void;
-  onUpload: (file: File) => void;
+  onUpload: (file: File) => Promise<void> | void;
+  isLoading?: boolean;
+  errorMessage?: string | null;
 };
 
 
@@ -25,11 +31,13 @@ export function ResumeScreen({
   onDelete,
   onSelect,
   onUpload,
+  isLoading = false,
+  errorMessage,
 }: ResumeScreenProps) {
   const inputId = useId();
   const [error, setError] = useState<string | null>(null);
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) {
@@ -39,8 +47,12 @@ export function ResumeScreen({
       setError("PDF ファイルのみアップロードできます。");
       return;
     }
+    if (file.size > MAX_RESUME_FILE_SIZE_BYTES) {
+      setError(`ファイルサイズは ${MAX_RESUME_FILE_SIZE_MB}MB 以下にしてください。`);
+      return;
+    }
     setError(null);
-    onUpload(file);
+    await onUpload(file);
   };
 
   return (
@@ -51,8 +63,11 @@ export function ResumeScreen({
       <div className="mock-list">
         {resumes.map((resume) => (
           <div key={resume.id} className={selectedResumeId === resume.id ? "mock-list-item selected" : "mock-list-item"}>
-            <button className="list-item-button" onClick={() => onSelect(resume.id)}>
-              {resume.fileName}
+            <button className="list-item-button" onClick={() => onSelect(resume.id)} aria-label={resume.fileName}>
+              <span>{resume.fileName}</span>
+              <span className="list-item-meta" aria-hidden="true">
+                {resume.hasExtractedText ? "本文を読み込み済み" : "本文抽出なし"}
+              </span>
             </button>
             <button className="secondary-button danger-button" onClick={() => onDelete(resume.id)}>
               削除
@@ -63,15 +78,15 @@ export function ResumeScreen({
       </div>
       <div className="form-stack">
         <label htmlFor={inputId}>PDF を追加</label>
-        <input id={inputId} type="file" accept="application/pdf,.pdf" onChange={handleFileChange} />
-        {error ? <p className="inline-error">{error}</p> : null}
+        <input id={inputId} type="file" accept="application/pdf,.pdf" onChange={handleFileChange} disabled={isLoading} />
+        {error || errorMessage ? <p className="inline-error">{error ?? errorMessage}</p> : null}
       </div>
       <div className="actions">
         <button className="secondary-button" onClick={onBack}>
           ホームへ戻る
         </button>
-        <button className="primary-button" onClick={onStart} disabled={resumes.length === 0}>
-          面接を始める
+        <button className="primary-button" onClick={onStart} disabled={resumes.length === 0 || isLoading}>
+          {isLoading ? "処理中" : "面接を始める"}
         </button>
       </div>
     </section>

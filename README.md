@@ -15,6 +15,22 @@
 
 ## セットアップ
 
+Stripe は、ローカルでは test、本番では live を使い分ける前提で以下を設定します。
+
+```bash
+STRIPE_SECRET_KEY_TEST=sk_test_xxx
+STRIPE_WEBHOOK_SECRET_TEST=whsec_test_xxx
+STRIPE_PRICE_ID_MINUTES_30_TEST=price_test_xxx
+
+STRIPE_SECRET_KEY_LIVE=sk_live_xxx
+STRIPE_WEBHOOK_SECRET_LIVE=whsec_live_xxx
+STRIPE_PRICE_ID_MINUTES_30_LIVE=price_live_xxx
+```
+
+`DEBUG=True` のときは test 用のキーと Price、`DEBUG=False` のときは live 用のキーと Price を優先して使います。`STRIPE_MODE=test|live` を明示すると、`DEBUG` に関係なく切り替えられます。
+
+Price ID を未設定にした場合は、アプリ側の金額定義から inline price を組み立てて Checkout Session を発行します。
+
 ### バックエンド
 
 ```bash
@@ -25,6 +41,17 @@ pip install -r requirements.txt
 cp ../.env.example .env
 python manage.py migrate
 python manage.py runserver 8000
+```
+
+バックエンドは起動時に `backend/.env` と `backend/.env.*`、あわせてリポジトリ直下の `.env` と `.env.*` を自動で読み込みます。読み込み順は `.env` のあとに `.env.*` で、後ろのファイルが上書きします。シェルですでに設定済みの環境変数は上書きしません。
+
+`AUTH_MODE=cognito` を使う場合は、バックエンドに Cognito の検証設定を入れます。`COGNITO_ISSUER` を省略した場合は region と user pool id から自動で組み立てます。
+
+```bash
+AUTH_MODE=cognito
+COGNITO_REGION=ap-northeast-1
+COGNITO_USER_POOL_ID=ap-northeast-1_xxxxx
+COGNITO_APP_CLIENT_ID=your-app-client-id
 ```
 
 ### フロントエンド

@@ -11,6 +11,7 @@ from apps.common.responses import json_error, json_success
 from apps.users.models import AppUser
 from .models import PaymentSession
 from .services import (
+    confirm_checkout_session,
     create_checkout_session,
     get_or_create_credit_balance,
     handle_stripe_webhook,
@@ -88,6 +89,47 @@ def checkout_sessions(request: HttpRequest):
     )
 
 
+@require_POST
+@require_principal
+def checkout_session_confirm(request: HttpRequest):
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return json_error(request, "INVALID_REQUEST", "JSON を解釈できません。", 400)
+
+    stripe_checkout_session_id = payload.get("checkout_session_id")
+    if not stripe_checkout_session_id:
+        return json_error(request, "INVALID_REQUEST", "checkout_session_id が必要です。", 400)
+
+    try:
+        payment_session = confirm_checkout_session(
+            user=_get_user(request),
+            stripe_checkout_session_id=stripe_checkout_session_id,
+        )
+    except PaymentSession.DoesNotExist:
+        return json_error(request, "NOT_FOUND", "決済セッションが見つかりません。", 404)
+    except ValueError as exc:
+        return json_error(request, "INVALID_REQUEST", str(exc), 400)
+
+    log_audit_event(
+        action_type="confirm_checkout_session",
+        target_type="payment_session",
+        target_id=payment_session.payment_session_id,
+        user=_get_user(request),
+        metadata={"status": payment_session.status},
+    )
+
+    return json_success(
+        request,
+        {
+            "payment_session_id": payment_session.payment_session_id,
+            "checkout_session_id": payment_session.stripe_checkout_session_id,
+            "status": payment_session.status,
+            "available_minutes": payment_session.user.credit_balance.available_minutes,
+        },
+    )
+
+
 @require_GET
 @require_principal
 def checkout_session_detail(request: HttpRequest, session_id: str):
@@ -104,6 +146,7 @@ def checkout_session_detail(request: HttpRequest, session_id: str):
             "status": payment_session.status,
             "amount_jpy": payment_session.amount_jpy,
             "purchased_minutes": payment_session.purchased_minutes,
+            "checkout_url": payment_session.checkout_url,
             "completed_at": payment_session.completed_at.isoformat() if payment_session.completed_at else None,
         },
     )

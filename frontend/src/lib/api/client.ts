@@ -47,7 +47,7 @@ export type InterviewMessage = {
   sender_type: "user" | "assistant";
   message_type?: "text" | "voice" | null;
   content: string;
-  ai_mode?: "azure" | "fallback" | null;
+  ai_mode?: "openai" | "azure" | "fallback" | null;
   created_at?: string | null;
 };
 
@@ -56,7 +56,7 @@ export type Reflection = {
   strengths: string[];
   improvements: string[];
   advice: string;
-  ai_mode: "azure" | "fallback";
+  ai_mode: "openai" | "azure" | "fallback";
   created_at?: string | null;
 };
 
@@ -72,6 +72,75 @@ type HistoryDetailResponseEnvelope = {
     session: InterviewSession;
     messages: InterviewMessage[];
     reflection?: Reflection | null;
+  };
+  meta: {
+    request_id: string;
+  };
+};
+
+export type ResumeFile = {
+  resume_id: string;
+  title?: string | null;
+  file_name: string;
+  file_path: string;
+  content_type: string;
+  file_size: number;
+  has_extracted_text: boolean;
+  extracted_text_preview?: string;
+  uploaded_at: string;
+  deleted_at?: string | null;
+};
+
+type ResumeListResponseEnvelope = {
+  data: ResumeFile[];
+  meta: {
+    request_id: string;
+  };
+};
+
+type ResumeResponseEnvelope = {
+  data: ResumeFile;
+  meta: {
+    request_id: string;
+  };
+};
+
+type DeleteResponseEnvelope = {
+  data: {
+    message: string;
+  };
+  meta: {
+    request_id: string;
+  };
+};
+
+type CreditBalanceResponseEnvelope = {
+  data: {
+    available_minutes: number;
+  };
+  meta: {
+    request_id: string;
+  };
+};
+
+type CheckoutSessionResponseEnvelope = {
+  data: {
+    payment_session_id: string;
+    checkout_session_id: string;
+    checkout_url: string;
+    expires_at?: string | null;
+  };
+  meta: {
+    request_id: string;
+  };
+};
+
+type CheckoutSessionConfirmResponseEnvelope = {
+  data: {
+    payment_session_id: string;
+    checkout_session_id: string;
+    status: string;
+    available_minutes: number;
   };
   meta: {
     request_id: string;
@@ -96,7 +165,10 @@ export function createApiClient(options: ApiClientOptions) {
   async function request<T>(path: string, authState: AuthState, init?: RequestInit): Promise<T> {
     const fetchImpl = options.fetchImpl ?? fetch;
     const headers = new Headers(init?.headers ?? {});
-    headers.set("Content-Type", "application/json");
+    const hasFormDataBody = typeof FormData !== "undefined" && init?.body instanceof FormData;
+    if (!hasFormDataBody && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
 
     if (authState.mode === "demo" && authState.demoUserId) {
       headers.set("X-Demo-User", authState.demoUserId);
@@ -141,11 +213,59 @@ export function createApiClient(options: ApiClientOptions) {
     getAuthMe(authState: AuthState) {
       return request<AuthMeResponseEnvelope>("/api/auth/me", authState, { method: "GET" });
     },
+    getCreditBalance(authState: AuthState) {
+      return request<CreditBalanceResponseEnvelope>("/api/credits/balance", authState, { method: "GET" });
+    },
     getHistory(authState: AuthState) {
       return request<HistoryListResponseEnvelope>("/api/history", authState, { method: "GET" });
     },
     getHistoryDetail(authState: AuthState, sessionId: string) {
       return request<HistoryDetailResponseEnvelope>(`/api/history/${sessionId}`, authState, { method: "GET" });
+    },
+    deleteHistory(authState: AuthState, sessionId: string) {
+      return request<DeleteResponseEnvelope>(`/api/history/${sessionId}`, authState, { method: "DELETE" });
+    },
+    createCheckoutSession(
+      authState: AuthState,
+      payload: {
+        plan_code: string;
+        quantity: number;
+        success_url: string;
+        cancel_url: string;
+      },
+    ) {
+      return request<CheckoutSessionResponseEnvelope>("/api/billing/checkout-sessions", authState, {
+        method: "POST",
+        headers: {
+          "Idempotency-Key": `checkout_${Date.now()}`,
+        },
+        body: JSON.stringify(payload),
+      });
+    },
+    confirmCheckoutSession(authState: AuthState, checkoutSessionId: string) {
+      return request<CheckoutSessionConfirmResponseEnvelope>("/api/billing/checkout-sessions/confirm", authState, {
+        method: "POST",
+        body: JSON.stringify({
+          checkout_session_id: checkoutSessionId,
+        }),
+      });
+    },
+    listResumes(authState: AuthState) {
+      return request<ResumeListResponseEnvelope>("/api/resumes", authState, { method: "GET" });
+    },
+    uploadResume(authState: AuthState, file: File, title?: string) {
+      const formData = new FormData();
+      formData.append("file", file);
+      if (title) {
+        formData.append("title", title);
+      }
+      return request<ResumeResponseEnvelope>("/api/resumes", authState, {
+        method: "POST",
+        body: formData,
+      });
+    },
+    deleteResume(authState: AuthState, resumeId: string) {
+      return request<DeleteResponseEnvelope>(`/api/resumes/${resumeId}/`, authState, { method: "DELETE" });
     },
   };
 }

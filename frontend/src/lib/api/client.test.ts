@@ -83,4 +83,145 @@ describe("api client", () => {
       code: "UNAUTHORIZED",
     } satisfies Partial<ApiError>);
   });
+
+  it("uploads resumes as multipart form data", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          resume_id: "res_1",
+          title: "resume.pdf",
+          file_name: "resume.pdf",
+          file_path: "resumes/resume.pdf",
+          content_type: "application/pdf",
+          file_size: 123,
+          has_extracted_text: true,
+          extracted_text_preview: "Python",
+          uploaded_at: "2026-05-12T10:00:00+09:00",
+          deleted_at: null,
+        },
+        meta: { request_id: "req_1" },
+      }),
+    });
+    const client = createApiClient({ baseUrl: "", fetchImpl: fetchMock as typeof fetch });
+    const file = new File(["%PDF-1.7"], "resume.pdf", { type: "application/pdf" });
+
+    await client.uploadResume({ mode: "demo", demoUserId: "demo_1", accessToken: null }, file, "resume.pdf");
+
+    const init = fetchMock.mock.calls[0][1];
+    const headers = init.headers as Headers;
+    expect(init.body).toBeInstanceOf(FormData);
+    expect(headers.get("Content-Type")).toBeNull();
+    expect(headers.get("X-Demo-User")).toBe("demo_1");
+  });
+
+  it("deletes a history entry", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: { message: "deleted" },
+        meta: { request_id: "req_1" },
+      }),
+    });
+    const client = createApiClient({ baseUrl: "", fetchImpl: fetchMock as typeof fetch });
+
+    await client.deleteHistory({ mode: "demo", demoUserId: "demo_1", accessToken: null }, "ses_1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/history/ses_1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("gets credit balance", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          available_minutes: 60,
+        },
+        meta: { request_id: "req_1" },
+      }),
+    });
+    const client = createApiClient({ baseUrl: "", fetchImpl: fetchMock as typeof fetch });
+
+    const response = await client.getCreditBalance({ mode: "demo", demoUserId: "demo_1", accessToken: null });
+
+    expect(response.data.available_minutes).toBe(60);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/credits/balance",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("creates a checkout session", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          payment_session_id: "pay_1",
+          checkout_session_id: "cs_1",
+          checkout_url: "https://checkout.stripe.test/session/cs_1",
+          expires_at: null,
+        },
+        meta: { request_id: "req_1" },
+      }),
+    });
+    const client = createApiClient({ baseUrl: "", fetchImpl: fetchMock as typeof fetch });
+
+    await client.createCheckoutSession(
+      { mode: "demo", demoUserId: "demo_1", accessToken: null },
+      {
+        plan_code: "minutes_30",
+        quantity: 1,
+        success_url: "http://localhost/success",
+        cancel_url: "http://localhost/cancel",
+      },
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/billing/checkout-sessions",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          plan_code: "minutes_30",
+          quantity: 1,
+          success_url: "http://localhost/success",
+          cancel_url: "http://localhost/cancel",
+        }),
+      }),
+    );
+    const headers = fetchMock.mock.calls[0][1].headers as Headers;
+    expect(headers.get("Idempotency-Key")).toContain("checkout_");
+  });
+
+  it("confirms a checkout session", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          payment_session_id: "pay_1",
+          checkout_session_id: "cs_1",
+          status: "reflected",
+          available_minutes: 60,
+        },
+        meta: { request_id: "req_1" },
+      }),
+    });
+    const client = createApiClient({ baseUrl: "", fetchImpl: fetchMock as typeof fetch });
+
+    const response = await client.confirmCheckoutSession(
+      { mode: "demo", demoUserId: "demo_1", accessToken: null },
+      "cs_1",
+    );
+
+    expect(response.data.available_minutes).toBe(60);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/billing/checkout-sessions/confirm",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ checkout_session_id: "cs_1" }),
+      }),
+    );
+  });
 });

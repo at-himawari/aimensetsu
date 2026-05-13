@@ -26,7 +26,7 @@ type HistoryListScreenProps = {
   onBack: () => void;
   onOpenDetail: (id: string) => void;
   onRestart: () => void;
-  onDelete: () => void;
+  onDelete: () => Promise<void> | void;
 };
 
 

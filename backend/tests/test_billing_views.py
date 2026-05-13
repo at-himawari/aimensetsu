@@ -4,6 +4,7 @@ import hmac
 import json
 import os
 from hashlib import sha256
+from unittest.mock import patch
 
 from django.test import Client, TestCase
 
@@ -22,6 +23,7 @@ class BillingViewsTestCase(TestCase):
         )
         CreditBalance.objects.create(balance_id="bal_billing_user", user=self.user, available_minutes=15)
         os.environ["STRIPE_WEBHOOK_SECRET"] = "test-webhook-secret"
+        os.environ["STRIPE_ALLOW_FAKE_CHECKOUT"] = "true"
 
     def test_credit_balance_and_transactions(self):
         balance_response = self.client.get("/api/credits/balance", HTTP_X_DEMO_USER=self.user.user_id)
@@ -88,3 +90,36 @@ class BillingViewsTestCase(TestCase):
             HTTP_STRIPE_SIGNATURE=signature,
         )
         self.assertEqual(response.status_code, 200)
+
+    @patch("apps.billing.services._retrieve_stripe_checkout_session")
+    def test_checkout_confirm_processes_paid_session(self, mocked_retrieve):
+        mocked_retrieve.return_value = {
+            "id": "cs_test_paid",
+            "payment_status": "paid",
+            "status": "complete",
+        }
+        create = self.client.post(
+            "/api/billing/checkout-sessions",
+            data=json.dumps(
+                {
+                    "plan_code": "minutes_30",
+                    "quantity": 1,
+                    "success_url": "https://example.com/success",
+                    "cancel_url": "https://example.com/cancel",
+                }
+            ),
+            content_type="application/json",
+            HTTP_X_DEMO_USER=self.user.user_id,
+            HTTP_IDEMPOTENCY_KEY="idem_confirm_view",
+        )
+        checkout_session_id = json.loads(create.content)["data"]["checkout_session_id"]
+
+        response = self.client.post(
+            "/api/billing/checkout-sessions/confirm",
+            data=json.dumps({"checkout_session_id": checkout_session_id}),
+            content_type="application/json",
+            HTTP_X_DEMO_USER=self.user.user_id,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(response.content)["data"]["available_minutes"], 45)

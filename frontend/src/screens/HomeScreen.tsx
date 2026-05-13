@@ -2,11 +2,14 @@ type HomeScreenProps = {
   creditBalanceMinutes: number;
   hasResume: boolean;
   onStartPractice: () => void;
+  onAddCredits: () => void;
   onMove: (screen: "resume" | "history" | "billing") => void;
 };
 
 
-export function HomeScreen({ creditBalanceMinutes, hasResume, onStartPractice, onMove }: HomeScreenProps) {
+export function HomeScreen({ creditBalanceMinutes, hasResume, onStartPractice, onAddCredits, onMove }: HomeScreenProps) {
+  const cannotStartPractice = hasResume && creditBalanceMinutes <= 0;
+
   return (
     <section className="screen-card">
       <p className="screen-label">Home</p>
@@ -21,9 +24,14 @@ export function HomeScreen({ creditBalanceMinutes, hasResume, onStartPractice, o
         </div>
       </div>
       <div className="cta-block">
-        <button className="primary-button cta-button" onClick={onStartPractice}>
-          {hasResume ? "今すぐ面接練習を始める" : "面接練習の準備を始める"}
+        <button className="primary-button cta-button" onClick={onStartPractice} disabled={cannotStartPractice}>
+          {cannotStartPractice ? "クレジット追加が必要です" : hasResume ? "今すぐ面接練習を始める" : "面接練習の準備を始める"}
         </button>
+        {cannotStartPractice ? (
+          <button className="secondary-button" onClick={onAddCredits}>
+            クレジットを追加する
+          </button>
+        ) : null}
       </div>
       <div className="card-grid secondary-grid">
         <button className="secondary-button" onClick={() => onMove("resume")}>
