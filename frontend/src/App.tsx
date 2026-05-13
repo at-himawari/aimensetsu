@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { BillingScreen } from "./screens/BillingScreen";
 import { HistoryListScreen } from "./screens/HistoryListScreen";
@@ -8,14 +8,25 @@ import { ReflectionScreen } from "./screens/ReflectionScreen";
 import { ResumeScreen } from "./screens/ResumeScreen";
 import { SessionScreen } from "./screens/SessionScreen";
 import type { ScreenKey } from "./screens/types";
-import { ApiError, createApiClient, type InterviewMessage, type InterviewSession, type Reflection } from "./lib/api/client";
-import { useAuth } from "./state/auth";
+import {
+  confirmSignUpWithCognito,
+  exchangeCognitoCode,
+  getCognitoConfig,
+  loginWithCognitoPassword,
+  readCognitoCallback,
+  resendConfirmationCodeWithCognito,
+  signUpWithCognito,
+} from "./lib/auth/cognito";
+import { ApiError, createApiClient, type InterviewMessage, type InterviewSession, type Reflection, type ResumeFile } from "./lib/api/client";
+import { useAuth, type AuthState } from "./state/auth";
 import { LoadingState } from "./ui/LoadingState";
 
 
 const apiClient = createApiClient({
   baseUrl: import.meta.env.VITE_API_BASE_URL ?? "",
 });
+const authMode = import.meta.env.MODE === "test" || import.meta.env.VITE_AUTH_MODE !== "cognito" ? "demo" : "cognito";
+const cognitoConfig = getCognitoConfig();
 
 type HistoryItem = {
   id: string;
@@ -99,31 +110,170 @@ const initialHistoryItems: HistoryItem[] = [
 type ResumeItem = {
   id: string;
   fileName: string;
+  hasExtractedText?: boolean;
 };
 
-const initialResumes: ResumeItem[] = [
-  { id: "resume_1", fileName: "resume_2026.pdf" },
-  { id: "resume_2", fileName: "backend-engineer.pdf" },
-];
+const initialResumes: ResumeItem[] = [];
+
+function mapResumeFile(resume: ResumeFile): ResumeItem {
+  return {
+    id: resume.resume_id,
+    fileName: resume.title || resume.file_name,
+    hasExtractedText: resume.has_extracted_text,
+  };
+}
 
 
 export default function App() {
-  const { authState, loginDemo, logout } = useAuth();
+  const { authState, loginDemo, setJwt, logout } = useAuth();
   const isLoggedIn = authState.mode !== "anonymous";
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [screen, setScreen] = useState<ScreenKey>("login");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [creditBalanceMinutes, setCreditBalanceMinutes] = useState(30);
+  const [isBillingLoading, setIsBillingLoading] = useState(false);
+  const [billingError, setBillingError] = useState<string | null>(null);
   const [historyItems, setHistoryItems] = useState([...initialHistoryItems]);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [resumes, setResumes] = useState<ResumeItem[]>([...initialResumes]);
-  const [selectedResumeId, setSelectedResumeId] = useState<string | null>(initialResumes[1]?.id ?? null);
+  const [selectedResumeId, setSelectedResumeId] = useState<string | null>(initialResumes[0]?.id ?? null);
+  const [isResumeLoading, setIsResumeLoading] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string>(initialHistoryItems[0].id);
+  const [latestReflection, setLatestReflection] = useState<HistoryItem["reflection"] | null>(null);
 
   const selectedHistory =
     historyItems.find((item) => item.id === selectedHistoryId) ?? historyItems[0] ?? null;
+
+  const completeLogin = async (nextAuthState: AuthState) => {
+    await Promise.all([
+      loadResumes(nextAuthState),
+      loadCreditBalance(nextAuthState),
+    ]);
+    setScreen("home");
+  };
+
+  const loadCreditBalance = async (nextAuthState: AuthState = authState) => {
+    if (nextAuthState.mode === "anonymous") {
+      return null;
+    }
+
+    try {
+      const response = await apiClient.getCreditBalance(nextAuthState);
+      setCreditBalanceMinutes(response.data.available_minutes);
+      return response.data.available_minutes;
+    } catch {
+      // 残高取得に失敗しても、主要導線は止めずに直近表示を維持します。
+      return null;
+    }
+  };
+
+  const confirmCheckoutIfNeeded = async (nextAuthState: AuthState, checkoutSessionId: string | null) => {
+    if (!checkoutSessionId) {
+      return null;
+    }
+
+    try {
+      const response = await apiClient.confirmCheckoutSession(nextAuthState, checkoutSessionId);
+      setCreditBalanceMinutes(response.data.available_minutes);
+      return response.data.available_minutes;
+    } catch {
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    if (authMode !== "cognito" || !cognitoConfig || authState.mode !== "anonymous") {
+      return;
+    }
+
+    const callback = readCognitoCallback(window.location.search);
+    if (!callback) {
+      return;
+    }
+
+    let isActive = true;
+    setIsLoading(true);
+    setLoginError(null);
+
+    exchangeCognitoCode(cognitoConfig, callback.code, callback.state)
+      .then(async (tokenResponse) => {
+        if (!isActive) {
+          return;
+        }
+        const token = tokenResponse.id_token || tokenResponse.access_token;
+        if (!token) {
+          throw new Error("ログイン情報を取得できませんでした。");
+        }
+        const nextAuthState: AuthState = {
+          mode: "jwt",
+          demoUserId: null,
+          accessToken: token,
+        };
+        setJwt(token);
+        window.history.replaceState({}, "", window.location.pathname);
+        await completeLogin(nextAuthState);
+      })
+      .catch((error) => {
+        if (!isActive) {
+          return;
+        }
+        const message = error instanceof Error ? error.message : "ログインに失敗しました。";
+        setLoginError(message);
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [authState.mode]);
+
+  useEffect(() => {
+    if (authState.mode === "anonymous") {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const checkoutStatus = params.get("checkout");
+    const checkoutSessionId = params.get("checkout_session_id");
+    let isActive = true;
+    if (checkoutStatus === "success" || screen === "login") {
+      setScreen("home");
+    }
+    if (checkoutStatus === "success") {
+      window.history.replaceState({}, "", window.location.pathname);
+      const pollCreditBalance = async (remainingAttempts: number) => {
+        if (!isActive || remainingAttempts <= 0) {
+          return;
+        }
+        const confirmedMinutes = await confirmCheckoutIfNeeded(authState, checkoutSessionId);
+        const availableMinutes = confirmedMinutes ?? await loadCreditBalance(authState);
+        if (availableMinutes !== null && availableMinutes > 0) {
+          return;
+        }
+        if (remainingAttempts === 5) {
+          void pollCreditBalance(remainingAttempts - 1);
+          return;
+        }
+        window.setTimeout(() => {
+          void pollCreditBalance(remainingAttempts - 1);
+        }, 500);
+      };
+      void pollCreditBalance(5);
+    } else {
+      void loadCreditBalance(authState);
+    }
+
+    return () => {
+      isActive = false;
+    };
+  }, [authState]);
 
   const loadHistoryDetail = async (historyId: string) => {
     if (authState.mode === "anonymous") {
@@ -175,6 +325,31 @@ export default function App() {
     }
   };
 
+  const loadResumes = async (nextAuthState: AuthState = authState) => {
+    if (nextAuthState.mode === "anonymous") {
+      return;
+    }
+
+    setIsResumeLoading(true);
+    setResumeError(null);
+    try {
+      const response = await apiClient.listResumes(nextAuthState);
+      const nextResumes = response.data.map(mapResumeFile);
+      setResumes(nextResumes);
+      setSelectedResumeId((currentId) => {
+        if (currentId && nextResumes.some((resume) => resume.id === currentId)) {
+          return currentId;
+        }
+        return nextResumes[0]?.id ?? null;
+      });
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "RESUME を取得できませんでした。";
+      setResumeError(message);
+    } finally {
+      setIsResumeLoading(false);
+    }
+  };
+
   const handleOpenHistoryDetail = (historyId: string) => {
     setSelectedHistoryId(historyId);
     setScreen("history");
@@ -182,35 +357,80 @@ export default function App() {
     void loadHistoryDetail(historyId);
   };
 
-  const handleDeleteHistory = () => {
+  const handleDeleteHistory = async () => {
+    if (!selectedHistoryId) {
+      return;
+    }
+
+    if (authState.mode !== "anonymous") {
+      try {
+        await apiClient.deleteHistory(authState, selectedHistoryId);
+      } catch (error) {
+        const message = error instanceof ApiError ? error.message : "履歴を削除できませんでした。";
+        setHistoryError(message);
+        return;
+      }
+    }
+
     setHistoryItems((currentItems) => {
       const nextItems = currentItems.filter((item) => item.id !== selectedHistoryId);
       if (nextItems.length > 0) {
         setSelectedHistoryId(nextItems[0].id);
+      } else {
+        setSelectedHistoryId("");
       }
       return nextItems;
     });
+    setHistoryError(null);
     setScreen("history");
   };
 
   const navigateTo = (nextScreen: ScreenKey) => {
     setScreen(nextScreen);
     setIsMenuOpen(false);
+    if (nextScreen === "home" || nextScreen === "billing") {
+      void loadCreditBalance();
+    }
     if (nextScreen === "history") {
       void loadHistory();
     }
+    if (nextScreen === "resume") {
+      void loadResumes();
+    }
   };
 
-  const handleUploadResume = (file: File) => {
-    const nextResume: ResumeItem = {
-      id: `resume_${Date.now()}`,
-      fileName: file.name,
-    };
-    setResumes((currentResumes) => [nextResume, ...currentResumes]);
-    setSelectedResumeId(nextResume.id);
+  const handleUploadResume = async (file: File) => {
+    if (authState.mode === "anonymous") {
+      setResumeError("ログイン後にアップロードできます。");
+      return;
+    }
+
+    setIsResumeLoading(true);
+    setResumeError(null);
+    try {
+      const response = await apiClient.uploadResume(authState, file, file.name);
+      const nextResume = mapResumeFile(response.data);
+      setResumes((currentResumes) => [nextResume, ...currentResumes.filter((resume) => resume.id !== nextResume.id)]);
+      setSelectedResumeId(nextResume.id);
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "RESUME をアップロードできませんでした。";
+      setResumeError(message);
+    } finally {
+      setIsResumeLoading(false);
+    }
   };
 
-  const handleDeleteResume = (resumeId: string) => {
+  const handleDeleteResume = async (resumeId: string) => {
+    if (authState.mode !== "anonymous") {
+      try {
+        await apiClient.deleteResume(authState, resumeId);
+      } catch (error) {
+        const message = error instanceof ApiError ? error.message : "RESUME を削除できませんでした。";
+        setResumeError(message);
+        return;
+      }
+    }
+
     setResumes((currentResumes) => {
       const nextResumes = currentResumes.filter((resume) => resume.id !== resumeId);
       if (selectedResumeId === resumeId) {
@@ -220,12 +440,36 @@ export default function App() {
     });
   };
 
-  const handlePurchaseCredits = () => {
-    setCreditBalanceMinutes((currentBalance) => currentBalance + 30);
+  const handlePurchaseCredits = async () => {
+    if (authState.mode === "anonymous") {
+      setBillingError("ログイン後に購入できます。");
+      return;
+    }
+
+    setIsBillingLoading(true);
+    setBillingError(null);
+    try {
+      const origin = window.location.origin;
+      const response = await apiClient.createCheckoutSession(authState, {
+        plan_code: "minutes_30",
+        quantity: 1,
+        success_url: `${origin}/?checkout=success&checkout_session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${origin}/?checkout=cancel`,
+      });
+      window.location.assign(response.data.checkout_url);
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Checkoutを開始できませんでした。";
+      setBillingError(message);
+    } finally {
+      setIsBillingLoading(false);
+    }
   };
 
   const handleStartPracticeFromHome = () => {
     setScreen(resumes.length > 0 ? "session" : "resume");
+    if (resumes.length === 0) {
+      void loadResumes();
+    }
   };
 
   const handleDemoLogin = async () => {
@@ -233,8 +477,13 @@ export default function App() {
     setLoginError(null);
     try {
       const response = await apiClient.demoLogin("demo_frontend", "Frontend Demo");
+      const nextAuthState: AuthState = {
+        mode: "demo",
+        demoUserId: response.data.access_token,
+        accessToken: null,
+      };
       loginDemo(response.data.access_token, response.data.user.name);
-      setScreen("home");
+      await completeLogin(nextAuthState);
     } catch (error) {
       const message = error instanceof ApiError ? error.message : "ログインに失敗しました。";
       setLoginError(message);
@@ -243,23 +492,126 @@ export default function App() {
     }
   };
 
+  const handlePasswordLogin = async (payload: { email: string; password: string }) => {
+    if (!cognitoConfig) {
+      setLoginError("ログイン設定が不足しています。");
+      return;
+    }
+
+    setIsLoading(true);
+    setLoginError(null);
+    try {
+      const tokenResponse = await loginWithCognitoPassword(cognitoConfig, payload);
+      const token = tokenResponse.idToken || tokenResponse.accessToken;
+      if (!token) {
+        throw new Error("ログイン情報を取得できませんでした。");
+      }
+      const nextAuthState: AuthState = {
+        mode: "jwt",
+        demoUserId: null,
+        accessToken: token,
+      };
+      setJwt(token);
+      await completeLogin(nextAuthState);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "ログインに失敗しました。";
+      setLoginError(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSignUp = async (payload: { email: string; password: string; phoneNumber: string; name?: string }) => {
+    if (!cognitoConfig) {
+      setLoginError("ログイン設定が不足しています。");
+      return;
+    }
+
+    setIsLoading(true);
+    setLoginError(null);
+    try {
+      await signUpWithCognito(cognitoConfig, payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "新規登録に失敗しました。";
+      setLoginError(message);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleConfirmSignUp = async (payload: { email: string; code: string }) => {
+    if (!cognitoConfig) {
+      setLoginError("ログイン設定が不足しています。");
+      return;
+    }
+
+    setIsLoading(true);
+    setLoginError(null);
+    try {
+      await confirmSignUpWithCognito(cognitoConfig, payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "確認に失敗しました。";
+      setLoginError(message);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResendConfirmationCode = async (payload: { email: string }) => {
+    if (!cognitoConfig) {
+      setLoginError("ログイン設定が不足しています。");
+      return;
+    }
+
+    setIsLoading(true);
+    setLoginError(null);
+    try {
+      await resendConfirmationCodeWithCognito(cognitoConfig, payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "確認コードの再送に失敗しました。";
+      setLoginError(message);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    setIsMenuOpen(false);
+    setScreen("login");
+  };
+
   return (
-    <main className={screen === "session" ? "page-shell session-page" : "page-shell"}>
+    <main className={screen === "session" ? "page-shell session-page" : screen === "login" ? "page-shell login-page" : "page-shell"}>
       <section className="hero-card">
         <p className="eyebrow">Interview Practice</p>
         <h1>AI面接コーチ</h1>
         <p className="lead">一人でも、落ち着いて面接練習を進められます。</p>
+        {screen === "login" ? (
+          <section className="top-features" aria-label="AI面接コーチの特徴">
+            <article className="top-feature-card">
+              <span className="top-feature-number">01</span>
+              <h2>経歴書に合わせた質問</h2>
+              <p>アップロードした内容をもとに、職種や経験に沿った面接練習ができます。</p>
+            </article>
+            <article className="top-feature-card">
+              <span className="top-feature-number">02</span>
+              <h2>ひとりで何度も練習</h2>
+              <p>声に出して答える練習を、時間を選ばず自分のペースで進められます。</p>
+            </article>
+            <article className="top-feature-card">
+              <span className="top-feature-number">03</span>
+              <h2>振り返りを保存</h2>
+              <p>良かった点と改善点を残し、次の練習で意識するポイントを明確にします。</p>
+            </article>
+          </section>
+        ) : null}
 
-        <div className="hero-toolbar">
-          {!isLoggedIn ? (
-            <button
-              onClick={handleDemoLogin}
-              className="primary-button"
-              disabled={isLoading}
-            >
-              {isLoading ? "ログイン中" : "デモログイン"}
-            </button>
-          ) : (
+        {isLoggedIn ? (
+          <div className="hero-toolbar">
             <div className="utility-actions">
               <button
                 onClick={() => setIsMenuOpen((current) => !current)}
@@ -290,18 +642,15 @@ export default function App() {
                   <button
                     className="menu-item menu-item-danger"
                     role="menuitem"
-                    onClick={() => {
-                      logout();
-                      setIsMenuOpen(false);
-                    }}
+                    onClick={handleLogout}
                   >
                     ログアウト
                   </button>
                 </div>
               ) : null}
             </div>
-          )}
-        </div>
+          </div>
+        ) : null}
 
         {isLoading ? (
           <LoadingState
@@ -314,6 +663,12 @@ export default function App() {
           {screen === "login" ? (
             <LoginScreen
               onDemoLogin={handleDemoLogin}
+              onPasswordLogin={handlePasswordLogin}
+              onSignUp={handleSignUp}
+              onConfirmSignUp={handleConfirmSignUp}
+              onResendConfirmationCode={handleResendConfirmationCode}
+              authMode={authMode}
+              isCognitoConfigured={Boolean(cognitoConfig)}
               isLoading={isLoading}
               errorMessage={loginError}
             />
@@ -323,6 +678,7 @@ export default function App() {
               creditBalanceMinutes={creditBalanceMinutes}
               hasResume={resumes.length > 0}
               onStartPractice={handleStartPracticeFromHome}
+              onAddCredits={() => navigateTo("billing")}
               onMove={(nextScreen) => {
                 navigateTo(nextScreen);
               }}
@@ -337,13 +693,32 @@ export default function App() {
               onDelete={handleDeleteResume}
               onSelect={setSelectedResumeId}
               onUpload={handleUploadResume}
+              isLoading={isResumeLoading}
+              errorMessage={resumeError}
             />
           ) : null}
           {screen === "session" ? (
-            <SessionScreen onFinish={() => navigateTo("reflection")} onBilling={() => navigateTo("billing")} />
+            <SessionScreen
+              resumeId={selectedResumeId}
+              resumeFileName={resumes.find((resume) => resume.id === selectedResumeId)?.fileName ?? null}
+              onFinish={(reflection) => {
+                setLatestReflection(
+                  reflection
+                    ? {
+                        strengths: reflection.strengths,
+                        improvements: reflection.improvements,
+                        advice: reflection.advice,
+                      }
+                    : null,
+                );
+                navigateTo("reflection");
+              }}
+              onBilling={() => navigateTo("billing")}
+            />
           ) : null}
           {screen === "reflection" ? (
             <ReflectionScreen
+              reflection={latestReflection}
               onHome={() => navigateTo("home")}
             />
           ) : null}
@@ -364,6 +739,8 @@ export default function App() {
               availableMinutes={creditBalanceMinutes}
               onBack={() => navigateTo("home")}
               onPurchase={handlePurchaseCredits}
+              isLoading={isBillingLoading}
+              errorMessage={billingError}
             />
           ) : null}
         </section>

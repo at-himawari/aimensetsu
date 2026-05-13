@@ -7,7 +7,8 @@
     "cdk": "cdk",
     "synth": "cdk synth",
     "diff": "cdk diff",
-    "deploy": "cdk deploy"
+    "deploy": "cdk deploy",
+    "cognito:csv": "node scripts/cognito-users-json-to-import-csv.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.12.12",

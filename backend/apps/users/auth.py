@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass
 
 import jwt
+from jwt import PyJWKClient
 from django.http import HttpRequest
 
 from apps.common.auth import AuthenticatedPrincipal, AuthenticationError
@@ -26,6 +27,7 @@ def load_auth_settings() -> AuthSettings:
     region = os.getenv("COGNITO_REGION")
     pool_id = os.getenv("COGNITO_USER_POOL_ID")
     issuer = os.getenv("COGNITO_ISSUER")
+    jwt_secret = os.getenv("COGNITO_JWT_SECRET")
     if not issuer and region and pool_id:
         issuer = f"https://cognito-idp.{region}.amazonaws.com/{pool_id}"
 
@@ -35,8 +37,8 @@ def load_auth_settings() -> AuthSettings:
         cognito_region=region,
         cognito_audience=os.getenv("COGNITO_APP_CLIENT_ID"),
         cognito_issuer=issuer,
-        jwt_secret=os.getenv("COGNITO_JWT_SECRET"),
-        jwt_algorithm=os.getenv("COGNITO_JWT_ALGORITHM", "HS256"),
+        jwt_secret=jwt_secret,
+        jwt_algorithm=os.getenv("COGNITO_JWT_ALGORITHM", "HS256" if jwt_secret else "RS256"),
     )
 
 
@@ -75,16 +77,48 @@ class CognitoJwtAuthAdapter:
         if not token:
             raise AuthenticationError("bearer token is empty")
 
-        if not self.settings.jwt_secret:
-            raise AuthenticationError("jwt secret is not configured")
+        try:
+            unverified_payload = jwt.decode(token, options={"verify_signature": False})
+        except jwt.PyJWTError as exc:
+            raise AuthenticationError("invalid cognito token") from exc
+        token_use = unverified_payload.get("token_use")
+        decode_options = {}
+        decode_kwargs = {
+            "algorithms": [self.settings.jwt_algorithm],
+            "issuer": self.settings.cognito_issuer,
+        }
+        if token_use == "access":
+            decode_options["verify_aud"] = False
+        else:
+            decode_kwargs["audience"] = self.settings.cognito_audience
 
-        payload = jwt.decode(
-            token,
-            self.settings.jwt_secret,
-            algorithms=[self.settings.jwt_algorithm],
-            audience=self.settings.cognito_audience,
-            issuer=self.settings.cognito_issuer,
-        )
+        try:
+            if self.settings.jwt_secret:
+                payload = jwt.decode(
+                    token,
+                    self.settings.jwt_secret,
+                    options=decode_options,
+                    **decode_kwargs,
+                )
+            else:
+                if not self.settings.cognito_issuer:
+                    raise AuthenticationError("cognito issuer is not configured")
+                jwks_url = f"{self.settings.cognito_issuer}/.well-known/jwks.json"
+                signing_key = PyJWKClient(jwks_url).get_signing_key_from_jwt(token)
+                payload = jwt.decode(
+                    token,
+                    signing_key.key,
+                    options=decode_options,
+                    **decode_kwargs,
+                )
+        except jwt.PyJWTError as exc:
+            raise AuthenticationError("invalid cognito token") from exc
+
+        if token_use == "access" and self.settings.cognito_audience:
+            client_id = payload.get("client_id")
+            if client_id != self.settings.cognito_audience:
+                raise AuthenticationError("token client id is invalid")
+
         exp = payload.get("exp")
         if exp is not None and exp < int(time.time()):
             raise AuthenticationError("token expired")
@@ -94,12 +128,14 @@ class CognitoJwtAuthAdapter:
             raise AuthenticationError("token subject is missing")
 
         email = payload.get("email")
+        phone_number = payload.get("phone_number")
         role = AppUser.Role.ADMIN if "admin" in payload.get("cognito:groups", []) else AppUser.Role.USER
         user, _ = AppUser.objects.get_or_create(
             user_id=subject,
             defaults={
                 "name": payload.get("name") or email or subject,
                 "email": email,
+                "phone_number": phone_number,
                 "auth_provider": AppUser.AuthProvider.COGNITO,
                 "external_subject": subject,
                 "role": role,

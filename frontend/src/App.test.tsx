@@ -5,15 +5,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { AuthProvider } from "./state/auth";
 
+const originalLocation = window.location;
 
-describe("App", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
+function jsonResponse(body: unknown, ok = true, status = 200) {
+  return {
+    ok,
+    status,
+    json: async () => body,
+  } as Response;
+}
+
+function installDefaultFetchMock() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input, init) => {
+      const path = String(input);
+      const method = init?.method ?? "GET";
+
+      if (path === "/api/auth/demo-login") {
+        return jsonResponse({
           data: {
             user: {
               user_id: "demo_frontend",
@@ -25,12 +35,138 @@ describe("App", () => {
             access_token: "demo_frontend",
           },
           meta: { request_id: "req_test" },
-        }),
-      }),
-    );
+        });
+      }
+
+      if (path === "/api/resumes" && method === "GET") {
+        return jsonResponse({
+          data: [
+            {
+              resume_id: "resume_1",
+              title: "resume_2026.pdf",
+              file_name: "resume_2026.pdf",
+              file_path: "resumes/resume_2026.pdf",
+              content_type: "application/pdf",
+              file_size: 123,
+              has_extracted_text: true,
+              extracted_text_preview: "Backend Engineer",
+              uploaded_at: "2026-05-01T10:00:00+09:00",
+              deleted_at: null,
+            },
+            {
+              resume_id: "resume_2",
+              title: "backend-engineer.pdf",
+              file_name: "backend-engineer.pdf",
+              file_path: "resumes/backend-engineer.pdf",
+              content_type: "application/pdf",
+              file_size: 456,
+              has_extracted_text: true,
+              extracted_text_preview: "Django",
+              uploaded_at: "2026-05-02T10:00:00+09:00",
+              deleted_at: null,
+            },
+          ],
+          meta: { request_id: "req_resumes" },
+        });
+      }
+
+      if (path === "/api/credits/balance") {
+        return jsonResponse({
+          data: {
+            available_minutes: 30,
+          },
+          meta: { request_id: "req_balance" },
+        });
+      }
+
+      if (path === "/api/resumes" && method === "POST") {
+        return jsonResponse({
+          data: {
+            resume_id: "resume_uploaded",
+            title: "new-resume.pdf",
+            file_name: "new-resume.pdf",
+            file_path: "resumes/new-resume.pdf",
+            content_type: "application/pdf",
+            file_size: 789,
+            has_extracted_text: true,
+            extracted_text_preview: "Uploaded",
+            uploaded_at: "2026-05-03T10:00:00+09:00",
+            deleted_at: null,
+          },
+          meta: { request_id: "req_upload" },
+        });
+      }
+
+      if (path.startsWith("/api/resumes/") && method === "DELETE") {
+        return jsonResponse({
+          data: { message: "deleted" },
+          meta: { request_id: "req_delete" },
+        });
+      }
+
+      if (path.startsWith("/api/history/") && method === "DELETE") {
+        return jsonResponse({
+          data: { message: "deleted" },
+          meta: { request_id: "req_history_delete" },
+        });
+      }
+
+      if (path === "/api/billing/checkout-sessions" && method === "POST") {
+        return jsonResponse({
+          data: {
+            payment_session_id: "pay_test",
+            checkout_session_id: "cs_test",
+            checkout_url: "https://checkout.stripe.test/session/cs_test",
+            expires_at: null,
+          },
+          meta: { request_id: "req_checkout" },
+        }, true, 201);
+      }
+
+      if (path === "/api/billing/checkout-sessions/confirm" && method === "POST") {
+        return jsonResponse({
+          data: {
+            payment_session_id: "pay_test",
+            checkout_session_id: "cs_test",
+            status: "reflected",
+            available_minutes: 60,
+          },
+          meta: { request_id: "req_checkout_confirm" },
+        });
+      }
+
+      if (path === "/api/history") {
+        return jsonResponse({
+          error: {
+            code: "NOT_FOUND",
+            message: "not found",
+          },
+        }, false, 404);
+      }
+
+      return jsonResponse({
+        error: {
+          code: "NOT_FOUND",
+          message: "not found",
+        },
+      }, false, 404);
+    }),
+  );
+}
+
+
+describe("App", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    installDefaultFetchMock();
   });
 
   afterEach(() => {
+    Object.defineProperty(window, "location", {
+      value: originalLocation,
+      writable: true,
+    });
+    window.history.pushState({}, "", "/");
     vi.unstubAllGlobals();
   });
 
@@ -101,6 +237,10 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "履歴を削除" }));
 
     expect(screen.getByRole("heading", { name: "履歴" })).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/history/history_1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
     expect(screen.queryByRole("button", { name: "2026-04-24 Backend Engineer 模擬面接" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "2026-04-23 自己紹介集中練習" })).toBeInTheDocument();
   });
@@ -125,15 +265,35 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: /面接練習/ })).toBeInTheDocument();
   });
 
+  it("rejects oversized resume uploads before calling the API", async () => {
+    const user = userEvent.setup();
+    render(
+      <AuthProvider>
+        <App />
+      </AuthProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+    await screen.findByRole("heading", { name: "ホーム" });
+    await user.click(screen.getByRole("button", { name: "経歴書を管理する" }));
+    const callCountBeforeUpload = vi.mocked(fetch).mock.calls.length;
+
+    const file = new File(["x"], "large-resume.pdf", { type: "application/pdf" });
+    Object.defineProperty(file, "size", { value: 50 * 1024 * 1024 + 1 });
+    await user.upload(screen.getByLabelText("PDF を追加"), file);
+
+    expect(screen.getByText("ファイルサイズは 50MB 以下にしてください。")).toBeInTheDocument();
+    expect(vi.mocked(fetch).mock.calls.length).toBe(callCountBeforeUpload);
+  });
+
   it("loads conversation history from the API", async () => {
     const user = userEvent.setup();
-    vi.mocked(fetch).mockImplementation(async (input) => {
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
       const path = String(input);
+      const method = init?.method ?? "GET";
 
       if (path === "/api/auth/demo-login") {
-        return {
-          ok: true,
-          json: async () => ({
+        return jsonResponse({
             data: {
               user: {
                 user_id: "demo_frontend",
@@ -145,14 +305,27 @@ describe("App", () => {
               access_token: "demo_frontend",
             },
             meta: { request_id: "req_login" },
-          }),
-        } as Response;
+          });
+      }
+
+      if (path === "/api/resumes" && method === "GET") {
+        return jsonResponse({
+          data: [],
+          meta: { request_id: "req_resumes" },
+        });
+      }
+
+      if (path === "/api/credits/balance") {
+        return jsonResponse({
+          data: {
+            available_minutes: 30,
+          },
+          meta: { request_id: "req_balance" },
+        });
       }
 
       if (path === "/api/history") {
-        return {
-          ok: true,
-          json: async () => ({
+        return jsonResponse({
             data: [
               {
                 session_id: "ses_api_history",
@@ -167,14 +340,11 @@ describe("App", () => {
               },
             ],
             meta: { request_id: "req_history" },
-          }),
-        } as Response;
+          });
       }
 
       if (path === "/api/history/ses_api_history") {
-        return {
-          ok: true,
-          json: async () => ({
+        return jsonResponse({
             data: {
               session: {
                 session_id: "ses_api_history",
@@ -214,19 +384,15 @@ describe("App", () => {
               },
             },
             meta: { request_id: "req_history_detail" },
-          }),
-        } as Response;
+          });
       }
 
-      return {
-        ok: false,
-        json: async () => ({
+      return jsonResponse({
           error: {
             code: "NOT_FOUND",
             message: "not found",
           },
-        }),
-      } as Response;
+        }, false, 404);
     });
 
     render(
@@ -247,6 +413,15 @@ describe("App", () => {
 
   it("purchases additional credits from the billing screen", async () => {
     const user = userEvent.setup();
+    const assignMock = vi.fn();
+    Object.defineProperty(window, "location", {
+      value: {
+        ...window.location,
+        origin: "http://localhost:5173",
+        assign: assignMock,
+      },
+      writable: true,
+    });
     render(
       <AuthProvider>
         <App />
@@ -259,10 +434,139 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "追加購入する" }));
     expect(screen.getByText("現在残高: 30分")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Stripe Checkoutへ進む" }));
-    expect(screen.getByText("現在残高: 60分")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/billing/checkout-sessions",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(assignMock).toHaveBeenCalledWith("https://checkout.stripe.test/session/cs_test");
 
     await user.click(screen.getByRole("button", { name: "ホームへ戻る" }));
-    expect(screen.getByText("残クレジット: 60分")).toBeInTheDocument();
+    expect(screen.getByText("残クレジット: 30分")).toBeInTheDocument();
+  });
+
+  it("refreshes credit balance from the API after checkout succeeds", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      "aimensetsu_auth_state",
+      JSON.stringify({ mode: "demo", demoUserId: "demo_frontend", accessToken: null }),
+    );
+    window.history.pushState({}, "", "/?checkout=success&checkout_session_id=cs_test");
+    let balanceRequestCount = 0;
+    let isCheckoutConfirmed = false;
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const path = String(input);
+      if (path === "/api/credits/balance") {
+        balanceRequestCount += 1;
+        return jsonResponse({
+          data: {
+            available_minutes: isCheckoutConfirmed || balanceRequestCount > 1 ? 60 : 0,
+          },
+          meta: { request_id: "req_balance_success" },
+        });
+      }
+      if (path === "/api/billing/checkout-sessions/confirm") {
+        isCheckoutConfirmed = true;
+        return jsonResponse({
+          data: {
+            payment_session_id: "pay_test",
+            checkout_session_id: "cs_test",
+            status: "reflected",
+            available_minutes: 60,
+          },
+          meta: { request_id: "req_checkout_confirm" },
+        });
+      }
+      if (path === "/api/resumes") {
+        return jsonResponse({
+          data: [],
+          meta: { request_id: "req_resumes" },
+        });
+      }
+      return jsonResponse({
+        error: {
+          code: "NOT_FOUND",
+          message: "not found",
+        },
+      }, false, 404);
+    });
+
+    render(
+      <AuthProvider>
+        <App />
+      </AuthProvider>,
+    );
+
+    expect(await screen.findByText("残クレジット: 60分", {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(window.location.search).toBe("");
+    await user.click(screen.getByRole("button", { name: "追加購入する" }));
+    expect(screen.getByText("現在残高: 60分")).toBeInTheDocument();
+  });
+
+  it("disables starting practice when credit balance is zero", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const path = String(input);
+      const method = init?.method ?? "GET";
+
+      if (path === "/api/auth/demo-login") {
+        return jsonResponse({
+          data: {
+            user: {
+              user_id: "demo_frontend",
+              name: "Frontend Demo",
+              auth_provider: "demo",
+              roles: ["user"],
+            },
+            token_type: "demo",
+            access_token: "demo_frontend",
+          },
+          meta: { request_id: "req_login" },
+        });
+      }
+      if (path === "/api/resumes" && method === "GET") {
+        return jsonResponse({
+          data: [
+            {
+              resume_id: "resume_1",
+              title: "resume.pdf",
+              file_name: "resume.pdf",
+              file_path: "resumes/resume.pdf",
+              content_type: "application/pdf",
+              file_size: 123,
+              has_extracted_text: true,
+              uploaded_at: "2026-05-01T10:00:00+09:00",
+              deleted_at: null,
+            },
+          ],
+          meta: { request_id: "req_resumes" },
+        });
+      }
+      if (path === "/api/credits/balance") {
+        return jsonResponse({
+          data: {
+            available_minutes: 0,
+          },
+          meta: { request_id: "req_balance" },
+        });
+      }
+      return jsonResponse({
+        error: {
+          code: "NOT_FOUND",
+          message: "not found",
+        },
+      }, false, 404);
+    });
+
+    render(
+      <AuthProvider>
+        <App />
+      </AuthProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+
+    const startButton = await screen.findByRole("button", { name: "クレジット追加が必要です" });
+    expect(startButton).toBeDisabled();
   });
 
   it("routes to resume setup from home when no resume remains", async () => {
