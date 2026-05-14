@@ -69,10 +69,6 @@ const { CognitoIdentityProviderClient, ListUsersCommand } = require("@aws-sdk/cl
 
 const client = new CognitoIdentityProviderClient({});
 
-function escapeFilterValue(value) {
-  return value.replace(/\\\\/g, "\\\\\\\\").replace(/"/g, "\\\\\"");
-}
-
 exports.handler = async (event) => {
   const phoneNumber = event.request.userAttributes.phone_number;
   if (!phoneNumber) {
@@ -81,7 +77,7 @@ exports.handler = async (event) => {
 
   const response = await client.send(new ListUsersCommand({
     UserPoolId: event.userPoolId,
-    Filter: \`phone_number = "\${escapeFilterValue(phoneNumber)}"\`,
+    Filter: \`phone_number = \${JSON.stringify(phoneNumber)}\`,
     Limit: 1,
   }));
   const existingUser = response.Users?.find((user) => user.Username !== event.userName);

@@ -148,6 +148,11 @@ function cognitoEndpoint(config: CognitoConfig) {
 }
 
 function friendlyCognitoError(errorType: string, fallback: string) {
+  const preSignUpPrefix = "PreSignUp failed with error ";
+  const normalizedFallback = fallback.startsWith(preSignUpPrefix)
+    ? fallback.slice(preSignUpPrefix.length).replace(/\.$/, "")
+    : fallback;
+
   if (errorType.includes("NotAuthorizedException")) {
     return "メールアドレスまたはパスワードが正しくありません。";
   }
@@ -170,12 +175,12 @@ function friendlyCognitoError(errorType: string, fallback: string) {
     return "パスワードは8文字以上で、英大文字・英小文字・数字・記号を含めてください。";
   }
   if (errorType.includes("InvalidParameterException")) {
-    return fallback || "入力内容を確認してください。";
+    return normalizedFallback || "入力内容を確認してください。";
   }
   if (errorType.includes("PasswordResetRequiredException")) {
     return "パスワード再設定が必要です。パスワード再設定から手続きしてください。";
   }
-  return fallback || "処理に失敗しました。時間をおいて再度お試しください。";
+  return normalizedFallback || "処理に失敗しました。時間をおいて再度お試しください。";
 }
 
 async function callCognito<T>(config: CognitoConfig, action: string, payload: object): Promise<T> {
