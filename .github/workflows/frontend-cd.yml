@@ -52,6 +52,25 @@ jobs:
       - name: Run tests
         run: npm run test
 
+      - name: Check production frontend environment
+        run: |
+          test "$VITE_AUTH_MODE" = "cognito" || {
+            echo "VITE_AUTH_MODE must be set to cognito in GitHub Actions variables."
+            exit 1
+          }
+          test -n "$VITE_API_BASE_URL" || {
+            echo "VITE_API_BASE_URL is not set in GitHub Actions variables."
+            exit 1
+          }
+          test -n "$VITE_COGNITO_REGION" || {
+            echo "VITE_COGNITO_REGION is not set in GitHub Actions variables."
+            exit 1
+          }
+          test -n "$VITE_COGNITO_CLIENT_ID" || {
+            echo "VITE_COGNITO_CLIENT_ID is not set in GitHub Actions variables."
+            exit 1
+          }
+
       - name: Build
         run: npm run build
 
