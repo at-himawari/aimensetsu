@@ -126,7 +126,12 @@ function mapResumeFile(resume: ResumeFile): ResumeItem {
 
 export default function App() {
   const { authState, loginDemo, setJwt, logout } = useAuth();
-  const isLoggedIn = authState.mode !== "anonymous";
+  const isLoggedIn =
+    authState.mode === "demo"
+      ? Boolean(authState.demoUserId)
+      : authState.mode === "jwt"
+        ? Boolean(authState.accessToken)
+        : false;
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [screen, setScreen] = useState<ScreenKey>("login");
@@ -143,6 +148,7 @@ export default function App() {
   const [resumeError, setResumeError] = useState<string | null>(null);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string>(initialHistoryItems[0].id);
   const [latestReflection, setLatestReflection] = useState<HistoryItem["reflection"] | null>(null);
+  const [isStartWithoutResumeDialogOpen, setIsStartWithoutResumeDialogOpen] = useState(false);
 
   const selectedHistory =
     historyItems.find((item) => item.id === selectedHistoryId) ?? historyItems[0] ?? null;
@@ -203,7 +209,7 @@ export default function App() {
         if (!isActive) {
           return;
         }
-        const token = tokenResponse.id_token || tokenResponse.access_token;
+        const token = tokenResponse.access_token;
         if (!token) {
           throw new Error("ログイン情報を取得できませんでした。");
         }
@@ -343,7 +349,13 @@ export default function App() {
         return nextResumes[0]?.id ?? null;
       });
     } catch (error) {
-      const message = error instanceof ApiError ? error.message : "RESUME を取得できませんでした。";
+      if (error instanceof ApiError && error.status === 401) {
+        setResumes([]);
+        setSelectedResumeId(null);
+        setResumeError(null);
+        return;
+      }
+      const message = error instanceof ApiError ? error.message : "職務経歴書を取得できませんでした。";
       setResumeError(message);
     } finally {
       setIsResumeLoading(false);
@@ -401,7 +413,7 @@ export default function App() {
 
   const handleUploadResume = async (file: File) => {
     if (authState.mode === "anonymous") {
-      setResumeError("ログイン後にアップロードできます。");
+      setResumeError("ログインするとアップロードできます。");
       return;
     }
 
@@ -413,7 +425,11 @@ export default function App() {
       setResumes((currentResumes) => [nextResume, ...currentResumes.filter((resume) => resume.id !== nextResume.id)]);
       setSelectedResumeId(nextResume.id);
     } catch (error) {
-      const message = error instanceof ApiError ? error.message : "RESUME をアップロードできませんでした。";
+      const message = error instanceof ApiError
+        ? error.message
+        : error instanceof DOMException && error.name === "AbortError"
+          ? "アップロードに時間がかかっています。ファイルサイズや通信状況を確認して、もう一度お試しください。"
+          : "職務経歴書をアップロードできませんでした。";
       setResumeError(message);
     } finally {
       setIsResumeLoading(false);
@@ -425,7 +441,7 @@ export default function App() {
       try {
         await apiClient.deleteResume(authState, resumeId);
       } catch (error) {
-        const message = error instanceof ApiError ? error.message : "RESUME を削除できませんでした。";
+        const message = error instanceof ApiError ? error.message : "職務経歴書を削除できませんでした。";
         setResumeError(message);
         return;
       }
@@ -466,10 +482,26 @@ export default function App() {
   };
 
   const handleStartPracticeFromHome = () => {
-    setScreen(resumes.length > 0 ? "session" : "resume");
     if (resumes.length === 0) {
-      void loadResumes();
+      setSelectedResumeId(null);
+      setIsStartWithoutResumeDialogOpen(true);
+      setIsMenuOpen(false);
+      return;
     }
+    setScreen("session");
+    setIsMenuOpen(false);
+  };
+
+  const handleStartPracticeWithoutResume = () => {
+    setSelectedResumeId(null);
+    setIsStartWithoutResumeDialogOpen(false);
+    setScreen("session");
+    setIsMenuOpen(false);
+  };
+
+  const handleAddResumeFromStartDialog = () => {
+    setIsStartWithoutResumeDialogOpen(false);
+    navigateTo("resume");
   };
 
   const handleDemoLogin = async () => {
@@ -502,7 +534,7 @@ export default function App() {
     setLoginError(null);
     try {
       const tokenResponse = await loginWithCognitoPassword(cognitoConfig, payload);
-      const token = tokenResponse.idToken || tokenResponse.accessToken;
+      const token = tokenResponse.accessToken;
       if (!token) {
         throw new Error("ログイン情報を取得できませんでした。");
       }
@@ -585,11 +617,11 @@ export default function App() {
   };
 
   return (
-    <main className={screen === "session" ? "page-shell session-page" : screen === "login" ? "page-shell login-page" : "page-shell"}>
+    <main className={screen === "session" ? "page-shell session-page" : screen === "login" ? "page-shell login-page" : "page-shell app-page"}>
       <section className="hero-card">
         <p className="eyebrow">Interview Practice</p>
         <h1>AI面接コーチ</h1>
-        <p className="lead">一人でも、落ち着いて面接練習を進められます。</p>
+        <p className="lead">本番前に、納得いくまで面接練習を重ねられます。</p>
         {screen === "login" ? (
           <section className="top-features" aria-label="AI面接コーチの特徴">
             <article className="top-feature-card">
@@ -689,17 +721,18 @@ export default function App() {
               resumes={resumes}
               selectedResumeId={selectedResumeId}
               onBack={() => navigateTo("home")}
-              onStart={() => navigateTo("session")}
+              onStart={handleStartPracticeFromHome}
               onDelete={handleDeleteResume}
               onSelect={setSelectedResumeId}
               onUpload={handleUploadResume}
+              onClearError={() => setResumeError(null)}
               isLoading={isResumeLoading}
               errorMessage={resumeError}
             />
           ) : null}
           {screen === "session" ? (
             <SessionScreen
-              resumeId={selectedResumeId}
+              resumeId={resumes.some((resume) => resume.id === selectedResumeId) ? selectedResumeId : null}
               resumeFileName={resumes.find((resume) => resume.id === selectedResumeId)?.fileName ?? null}
               onFinish={(reflection) => {
                 setLatestReflection(
@@ -744,6 +777,37 @@ export default function App() {
             />
           ) : null}
         </section>
+        {isStartWithoutResumeDialogOpen ? (
+          <div className="modal-backdrop" role="presentation">
+            <section
+              className="confirm-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="start-without-resume-title"
+            >
+              <p className="screen-label">Confirm</p>
+              <h2 id="start-without-resume-title">職務経歴書なしで始めますか？</h2>
+              <p>
+                このまま始めることもできます。職務経歴書を追加すると、内容に合わせた質問で練習しやすくなります。
+              </p>
+              <div className="actions dialog-actions">
+                <button className="secondary-button" onClick={handleAddResumeFromStartDialog}>
+                  職務経歴書を追加する
+                </button>
+                <button className="primary-button" onClick={handleStartPracticeWithoutResume}>
+                  このまま始める
+                </button>
+              </div>
+              <button
+                className="dialog-close-button"
+                onClick={() => setIsStartWithoutResumeDialogOpen(false)}
+                aria-label="確認を閉じる"
+              >
+                ×
+              </button>
+            </section>
+          </div>
+        ) : null}
       </section>
     </main>
   );

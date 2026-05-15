@@ -70,12 +70,17 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([
-    "プレビュー準備完了。マイク接続を開始できます。",
+    "面接を開始できます。",
   ]);
-  const [connectionStep, setConnectionStep] = useState("プレビュー準備完了。マイク接続を開始できます。");
+  const [connectionStep, setConnectionStep] = useState("面接を開始できます。");
   const [conversationLog, setConversationLog] = useState<ConversationLogEntry[]>([]);
   const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(false);
   const [shouldMuteDuringAssistantSpeech, setShouldMuteDuringAssistantSpeech] = useState(true);
+  const [shouldIgnoreResume, setShouldIgnoreResume] = useState(false);
+
+  useEffect(() => {
+    setShouldIgnoreResume(false);
+  }, [resumeId]);
 
   const appendEvent = (message: string) => {
     setEvents((currentEvents) => [message, ...currentEvents].slice(0, 6));
@@ -319,15 +324,29 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
   const createInterviewSession = async () => {
     const headers = authHeaders();
     headers.set("Content-Type", "application/json");
-    const response = await fetch("/api/interview-sessions", {
+
+    const createSession = (nextResumeId: string | null) => fetch("/api/interview-sessions", {
       method: "POST",
       headers,
       body: JSON.stringify({
         mode: "voice",
         job_role: "Webアプリケーションエンジニア",
-        resume_id: resumeId,
+        resume_id: nextResumeId,
       }),
     });
+
+    const requestedResumeId = shouldIgnoreResume ? null : resumeId;
+    let response = await createSession(requestedResumeId);
+    if (!response.ok && requestedResumeId) {
+      const body = await response.json().catch(() => null);
+      if (body?.error?.code === "NOT_FOUND") {
+        setShouldIgnoreResume(true);
+        updateConnectionStep("選択中の職務経歴書が見つからないため、職務経歴書なしで開始します。");
+        response = await createSession(null);
+      } else {
+        throw new Error(body?.error?.message ?? "面接セッションを開始できませんでした。");
+      }
+    }
 
     if (!response.ok) {
       const body = await response.json().catch(() => null);
@@ -338,7 +357,7 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
     return body.data.session_id;
   };
 
-  const startRealtimePreview = async () => {
+  const startInterview = async () => {
     setStatus("starting");
     setErrorMessage(null);
     setConversationLog([]);
@@ -431,15 +450,15 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
       setStatus("connected");
       updateConnectionStep("接続完了。音声で面接練習を始められます。");
     } catch (error) {
-      stopRealtimePreview();
-      const message = error instanceof Error ? error.message : "Realtimeプレビューを開始できませんでした。";
+      stopInterviewAudio();
+      const message = error instanceof Error ? error.message : "面接を開始できませんでした。";
       setErrorMessage(message);
       setStatus("error");
       appendEvent(message);
     }
   };
 
-  const stopRealtimePreview = () => {
+  const stopInterviewAudio = () => {
     if (assistantSpeechFallbackTimeoutRef.current !== null) {
       window.clearTimeout(assistantSpeechFallbackTimeoutRef.current);
       assistantSpeechFallbackTimeoutRef.current = null;
@@ -463,7 +482,7 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
   };
 
   const handleFinish = async () => {
-    stopRealtimePreview();
+    stopInterviewAudio();
     const currentSessionId = sessionIdRef.current;
     let reflection: SessionReflection | null = null;
     if (currentSessionId) {
@@ -493,10 +512,10 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
     <section className="screen-card session-screen-card">
       <div className="session-top-row">
         <div>
-          <p className="screen-label">Realtime Preview</p>
+          <p className="screen-label">Interview</p>
           <h2>面接練習</h2>
           <p className="section-note">マイクで話すと、AI面接コーチが音声で返答します。</p>
-          {resumeFileName ? <p className="section-note">使用レジュメ: {resumeFileName}</p> : null}
+          {resumeFileName && !shouldIgnoreResume ? <p className="section-note">使用レジュメ: {resumeFileName}</p> : null}
           <label className="audio-guard-toggle">
             <input
               type="checkbox"
@@ -573,12 +592,12 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
 
       <div className="actions">
         {!isConnected ? (
-          <button className="primary-button" onClick={startRealtimePreview} disabled={isStarting}>
-            {isStarting ? "接続中" : "音声プレビュー開始"}
+          <button className="primary-button" onClick={startInterview} disabled={isStarting}>
+            {isStarting ? "接続中" : "面接を開始する"}
           </button>
         ) : (
-          <button className="secondary-button" onClick={stopRealtimePreview}>
-            音声プレビュー停止
+          <button className="secondary-button" onClick={stopInterviewAudio}>
+            音声を停止する
           </button>
         )}
         <button className="secondary-button" onClick={onBilling}>

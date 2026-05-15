@@ -5,6 +5,13 @@ import { describe, expect, it } from "vitest";
 import { AuthProvider, resetStoredAuthState, useAuth } from "./auth";
 
 
+function makeJwt(payload: Record<string, unknown>) {
+  const encode = (value: unknown) =>
+    window.btoa(JSON.stringify(value)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `${encode({ alg: "none" })}.${encode(payload)}.signature`;
+}
+
+
 function wrapper({ children }: { children: ReactNode }) {
   return <AuthProvider>{children}</AuthProvider>;
 }
@@ -30,11 +37,55 @@ describe("auth state", () => {
   it("stores jwt mode", () => {
     resetStoredAuthState();
     const { result } = renderHook(() => useAuth(), { wrapper });
+    const token = makeJwt({ token_use: "access", exp: Math.floor(Date.now() / 1000) + 3600 });
 
     act(() => {
-      result.current.setJwt("jwt-token");
+      result.current.setJwt(token);
     });
     expect(result.current.authState.mode).toBe("jwt");
-    expect(result.current.authState.accessToken).toBe("jwt-token");
+    expect(result.current.authState.accessToken).toBe(token);
+  });
+
+  it("ignores persisted jwt state without a token", () => {
+    window.localStorage.setItem(
+      "aimensetsu_auth_state",
+      JSON.stringify({ mode: "jwt", demoUserId: null, accessToken: null }),
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    expect(result.current.authState.mode).toBe("anonymous");
+  });
+
+  it("ignores persisted id tokens because API calls require an access token", () => {
+    window.localStorage.setItem(
+      "aimensetsu_auth_state",
+      JSON.stringify({
+        mode: "jwt",
+        demoUserId: null,
+        accessToken: makeJwt({ token_use: "id", exp: Math.floor(Date.now() / 1000) + 3600 }),
+      }),
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    expect(result.current.authState.mode).toBe("anonymous");
+  });
+
+  it("restores a persisted access token", () => {
+    const token = makeJwt({ token_use: "access", exp: Math.floor(Date.now() / 1000) + 3600 });
+    window.localStorage.setItem(
+      "aimensetsu_auth_state",
+      JSON.stringify({
+        mode: "jwt",
+        demoUserId: null,
+        accessToken: token,
+      }),
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    expect(result.current.authState.mode).toBe("jwt");
+    expect(result.current.authState.accessToken).toBe(token);
   });
 });

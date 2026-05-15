@@ -192,7 +192,7 @@ describe("App", () => {
     expect(screen.getByText("接続後、あなたとAIの発話がここに表示されます。")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "クレジット追加" }));
-    expect(screen.getByRole("heading", { name: "課金" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "練習時間を追加" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "ホームへ戻る" }));
     await user.click(screen.getByRole("button", { name: "経歴書を管理する" }));
@@ -256,13 +256,35 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
     await screen.findByRole("heading", { name: "ホーム" });
     await user.click(screen.getByRole("button", { name: "経歴書を管理する" }));
+    await user.click(screen.getAllByRole("button", { name: "削除" })[0]);
 
     const file = new File(["%PDF-1.7 mock"], "new-resume.pdf", { type: "application/pdf" });
     await user.upload(screen.getByLabelText("PDF を追加"), file);
 
+    expect(screen.getByText("選択中: new-resume.pdf")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "アップロードする" }));
     expect(screen.getByRole("button", { name: "new-resume.pdf" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "面接を始める" }));
     expect(screen.getByRole("heading", { name: /面接練習/ })).toBeInTheDocument();
+  });
+
+  it("keeps the upload action available before selecting a file", async () => {
+    const user = userEvent.setup();
+    render(
+      <AuthProvider>
+        <App />
+      </AuthProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+    await screen.findByRole("heading", { name: "ホーム" });
+    await user.click(screen.getByRole("button", { name: "経歴書を管理する" }));
+    await user.click(screen.getAllByRole("button", { name: "削除" })[0]);
+
+    const uploadButton = screen.getByRole("button", { name: "アップロードする" });
+    expect(uploadButton).toBeEnabled();
+    await user.click(uploadButton);
+    expect(screen.getByText("アップロードする PDF を選択してください。")).toBeInTheDocument();
   });
 
   it("rejects oversized resume uploads before calling the API", async () => {
@@ -276,6 +298,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
     await screen.findByRole("heading", { name: "ホーム" });
     await user.click(screen.getByRole("button", { name: "経歴書を管理する" }));
+    await user.click(screen.getAllByRole("button", { name: "削除" })[0]);
     const callCountBeforeUpload = vi.mocked(fetch).mock.calls.length;
 
     const file = new File(["x"], "large-resume.pdf", { type: "application/pdf" });
@@ -284,6 +307,23 @@ describe("App", () => {
 
     expect(screen.getByText("ファイルサイズは 50MB 以下にしてください。")).toBeInTheDocument();
     expect(vi.mocked(fetch).mock.calls.length).toBe(callCountBeforeUpload);
+  });
+
+  it("disables resume uploads after two files are registered", async () => {
+    const user = userEvent.setup();
+    render(
+      <AuthProvider>
+        <App />
+      </AuthProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+    await screen.findByRole("heading", { name: "ホーム" });
+    await user.click(screen.getByRole("button", { name: "経歴書を管理する" }));
+
+    expect(screen.getByLabelText("PDF を追加")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "アップロードする" })).toBeDisabled();
+    expect(screen.getByText("登録できる履歴書・職務経歴書は2件までです。追加する場合は不要なPDFを削除してください。")).toBeInTheDocument();
   });
 
   it("loads conversation history from the API", async () => {
@@ -429,11 +469,11 @@ describe("App", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
-    expect(await screen.findByText("残クレジット: 30分")).toBeInTheDocument();
+    expect(await screen.findByLabelText("残クレジット: 30分")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "追加購入する" }));
-    expect(screen.getByText("現在残高: 30分")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Stripe Checkoutへ進む" }));
+    expect(screen.getByText("30分追加パック")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "30分を追加購入する" }));
     expect(fetch).toHaveBeenCalledWith(
       "/api/billing/checkout-sessions",
       expect.objectContaining({ method: "POST" }),
@@ -441,7 +481,7 @@ describe("App", () => {
     expect(assignMock).toHaveBeenCalledWith("https://checkout.stripe.test/session/cs_test");
 
     await user.click(screen.getByRole("button", { name: "ホームへ戻る" }));
-    expect(screen.getByText("残クレジット: 30分")).toBeInTheDocument();
+    expect(screen.getByLabelText("残クレジット: 30分")).toBeInTheDocument();
   });
 
   it("refreshes credit balance from the API after checkout succeeds", async () => {
@@ -496,10 +536,10 @@ describe("App", () => {
       </AuthProvider>,
     );
 
-    expect(await screen.findByText("残クレジット: 60分", {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(await screen.findByLabelText("残クレジット: 60分", {}, { timeout: 3000 })).toBeInTheDocument();
     expect(window.location.search).toBe("");
     await user.click(screen.getByRole("button", { name: "追加購入する" }));
-    expect(screen.getByText("現在残高: 60分")).toBeInTheDocument();
+    expect(screen.getByText("30分追加パック")).toBeInTheDocument();
   });
 
   it("disables starting practice when credit balance is zero", async () => {
@@ -565,11 +605,13 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
 
-    const startButton = await screen.findByRole("button", { name: "クレジット追加が必要です" });
-    expect(startButton).toBeDisabled();
+    const startButton = await screen.findByRole("button", { name: "クレジットを追加して始める" });
+    expect(startButton).toBeEnabled();
+    await user.click(startButton);
+    expect(screen.getByRole("heading", { name: "練習時間を追加" })).toBeInTheDocument();
   });
 
-  it("routes to resume setup from home when no resume remains", async () => {
+  it("starts practice from home even when no resume remains", async () => {
     const user = userEvent.setup();
     render(
       <AuthProvider>
@@ -582,11 +624,35 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "経歴書を管理する" }));
     await user.click(screen.getAllByRole("button", { name: "削除" })[0]);
     await user.click(screen.getAllByRole("button", { name: "削除" })[0]);
-    expect(screen.getByText("まだ RESUME がありません。")).toBeInTheDocument();
+    expect(screen.getByText("履歴書・職務経歴書はまだ登録されていません。")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "ホームへ戻る" }));
-    await user.click(screen.getByRole("button", { name: "面接練習の準備を始める" }));
+    await user.click(screen.getByRole("button", { name: "今すぐ面接練習を始める" }));
+    expect(screen.getByRole("dialog", { name: "職務経歴書なしで始めますか？" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "このまま始める" }));
+    expect(screen.getByRole("heading", { name: /面接練習/ })).toBeInTheDocument();
+  });
+
+  it("offers a resume upload path before starting without a resume", async () => {
+    const user = userEvent.setup();
+    render(
+      <AuthProvider>
+        <App />
+      </AuthProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+    await screen.findByRole("heading", { name: "ホーム" });
+    await user.click(screen.getByRole("button", { name: "経歴書を管理する" }));
+    await user.click(screen.getAllByRole("button", { name: "削除" })[0]);
+    await user.click(screen.getAllByRole("button", { name: "削除" })[0]);
+    await user.click(screen.getByRole("button", { name: "ホームへ戻る" }));
+
+    await user.click(screen.getByRole("button", { name: "今すぐ面接練習を始める" }));
+    await user.click(screen.getByRole("button", { name: "職務経歴書を追加する" }));
+
     expect(screen.getByRole("heading", { name: "履歴書・職務経歴書アップロード" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "職務経歴書なしで始めますか？" })).not.toBeInTheDocument();
   });
 
   it("opens logout inside the shared menu", async () => {

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 
+const PENDING_CONFIRMATION_EMAIL_KEY = "aimensetsu_pending_confirmation_email";
 
 type LoginScreenProps = {
   onDemoLogin: () => void;
@@ -25,8 +26,9 @@ export function LoginScreen({
   isLoading = false,
   errorMessage = null,
 }: LoginScreenProps) {
-  const [mode, setMode] = useState<"login" | "signup" | "confirm">("login");
-  const [email, setEmail] = useState("");
+  const storedConfirmationEmail = window.localStorage.getItem(PENDING_CONFIRMATION_EMAIL_KEY) ?? "";
+  const [mode, setMode] = useState<"login" | "signup" | "confirm">(storedConfirmationEmail ? "confirm" : "login");
+  const [email, setEmail] = useState(storedConfirmationEmail);
   const [name, setName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
@@ -47,6 +49,13 @@ export function LoginScreen({
     return () => window.clearInterval(timer);
   }, [now, resendAvailableAt]);
 
+  useEffect(() => {
+    if (errorMessage?.includes("電話番号確認") && email) {
+      window.localStorage.setItem(PENDING_CONFIRMATION_EMAIL_KEY, email);
+      setMode("confirm");
+    }
+  }, [email, errorMessage]);
+
   const handleLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLocalMessage(null);
@@ -57,6 +66,7 @@ export function LoginScreen({
     event.preventDefault();
     setLocalMessage(null);
     await onSignUp({ email, password, phoneNumber, name });
+    window.localStorage.setItem(PENDING_CONFIRMATION_EMAIL_KEY, email);
     setMode("confirm");
     const nextAvailableAt = Date.now() + 60_000;
     setNow(Date.now());
@@ -68,6 +78,7 @@ export function LoginScreen({
     event.preventDefault();
     setLocalMessage(null);
     await onConfirmSignUp({ email, code: confirmationCode });
+    window.localStorage.removeItem(PENDING_CONFIRMATION_EMAIL_KEY);
     setMode("login");
     setPassword("");
     setConfirmationCode("");
@@ -105,6 +116,7 @@ export function LoginScreen({
               className={mode === "login" ? "auth-tab auth-tab-active" : "auth-tab"}
               onClick={() => setMode("login")}
               aria-selected={mode === "login"}
+              disabled={mode === "confirm"}
               role="tab"
             >
               ログイン
@@ -114,6 +126,7 @@ export function LoginScreen({
               className={mode === "signup" ? "auth-tab auth-tab-active" : "auth-tab"}
               onClick={() => setMode("signup")}
               aria-selected={mode === "signup"}
+              disabled={mode === "confirm"}
               role="tab"
             >
               新規登録

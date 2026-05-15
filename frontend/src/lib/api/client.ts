@@ -29,6 +29,8 @@ type ApiClientOptions = {
   fetchImpl?: typeof fetch;
 };
 
+const RESUME_UPLOAD_TIMEOUT_MS = 60000;
+
 export type InterviewSession = {
   session_id: string;
   resume_id?: string | null;
@@ -253,16 +255,23 @@ export function createApiClient(options: ApiClientOptions) {
     listResumes(authState: AuthState) {
       return request<ResumeListResponseEnvelope>("/api/resumes", authState, { method: "GET" });
     },
-    uploadResume(authState: AuthState, file: File, title?: string) {
+    async uploadResume(authState: AuthState, file: File, title?: string) {
       const formData = new FormData();
       formData.append("file", file);
       if (title) {
         formData.append("title", title);
       }
-      return request<ResumeResponseEnvelope>("/api/resumes", authState, {
-        method: "POST",
-        body: formData,
-      });
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), RESUME_UPLOAD_TIMEOUT_MS);
+      try {
+        return await request<ResumeResponseEnvelope>("/api/resumes", authState, {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        });
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
     },
     deleteResume(authState: AuthState, resumeId: string) {
       return request<DeleteResponseEnvelope>(`/api/resumes/${resumeId}/`, authState, { method: "DELETE" });
