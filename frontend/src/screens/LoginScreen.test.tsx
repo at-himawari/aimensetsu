@@ -14,6 +14,8 @@ function renderLoginScreen(overrides: Partial<ComponentProps<typeof LoginScreen>
       onSignUp={vi.fn(async () => undefined)}
       onConfirmSignUp={vi.fn(async () => undefined)}
       onResendConfirmationCode={vi.fn(async () => undefined)}
+      onForgotPassword={vi.fn(async () => undefined)}
+      onConfirmForgotPassword={vi.fn(async () => undefined)}
       authMode="cognito"
       isCognitoConfigured
       {...overrides}
@@ -66,6 +68,8 @@ describe("LoginScreen", () => {
         onSignUp={vi.fn(async () => undefined)}
         onConfirmSignUp={vi.fn(async () => undefined)}
         onResendConfirmationCode={vi.fn(async () => undefined)}
+        onForgotPassword={vi.fn(async () => undefined)}
+        onConfirmForgotPassword={vi.fn(async () => undefined)}
         authMode="cognito"
         isCognitoConfigured
         errorMessage="電話番号確認が完了していません。SMSの確認コードを入力してください。"
@@ -74,5 +78,65 @@ describe("LoginScreen", () => {
 
     expect(await screen.findByRole("heading", { name: "電話番号確認" })).toBeInTheDocument();
     expect(screen.getByLabelText("SMS確認コード")).toBeInTheDocument();
+  });
+
+  it("announces an incorrect password message on the login form", () => {
+    renderLoginScreen({
+      errorMessage: "メールアドレスまたはパスワードが正しくありません。",
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("メールアドレスまたはパスワードが正しくありません。");
+  });
+
+  it("moves migrated users to password reset when Cognito requires it", async () => {
+    const user = userEvent.setup();
+    const view = renderLoginScreen();
+
+    await user.type(screen.getByLabelText("メールアドレス"), "migrated@example.com");
+    view.rerender(
+      <LoginScreen
+        onDemoLogin={vi.fn()}
+        onPasswordLogin={vi.fn(async () => undefined)}
+        onSignUp={vi.fn(async () => undefined)}
+        onConfirmSignUp={vi.fn(async () => undefined)}
+        onResendConfirmationCode={vi.fn(async () => undefined)}
+        onForgotPassword={vi.fn(async () => undefined)}
+        onConfirmForgotPassword={vi.fn(async () => undefined)}
+        authMode="cognito"
+        isCognitoConfigured
+        errorMessage="パスワード再設定が必要です。確認コードを受け取り、新しいパスワードを設定してください。"
+      />,
+    );
+
+    expect(await screen.findByRole("heading", { name: "パスワード再設定" })).toBeInTheDocument();
+    expect(screen.getByLabelText("メールアドレス")).toHaveValue("migrated@example.com");
+    expect(screen.getByRole("button", { name: "確認コードを送信" })).toBeInTheDocument();
+  });
+
+  it("completes the password reset code flow", async () => {
+    const user = userEvent.setup();
+    const onForgotPassword = vi.fn(async () => undefined);
+    const onConfirmForgotPassword = vi.fn(async () => undefined);
+    renderLoginScreen({ onForgotPassword, onConfirmForgotPassword });
+
+    await user.click(screen.getByRole("button", { name: "パスワードを再設定する" }));
+    await user.type(screen.getByLabelText("メールアドレス"), "user@example.com");
+    await user.click(screen.getByRole("button", { name: "確認コードを送信" }));
+
+    expect(onForgotPassword).toHaveBeenCalledWith({ email: "user@example.com" });
+    expect(await screen.findByRole("heading", { name: "パスワード再設定" })).toBeInTheDocument();
+    expect(screen.getByLabelText("確認コード")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("確認コード"), "123456");
+    await user.type(screen.getByLabelText("新しいパスワード"), "NewPassword1!");
+    await user.click(screen.getByRole("button", { name: "パスワードを再設定" }));
+
+    expect(onConfirmForgotPassword).toHaveBeenCalledWith({
+      email: "user@example.com",
+      code: "123456",
+      newPassword: "NewPassword1!",
+    });
+    expect(await screen.findByRole("heading", { name: "ログイン" })).toBeInTheDocument();
+    expect(screen.getByText("パスワードを再設定しました。新しいパスワードでログインしてください。")).toBeInTheDocument();
   });
 });

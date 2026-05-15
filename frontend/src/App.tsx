@@ -9,8 +9,10 @@ import { ResumeScreen } from "./screens/ResumeScreen";
 import { SessionScreen } from "./screens/SessionScreen";
 import type { ScreenKey } from "./screens/types";
 import {
+  confirmForgotPasswordWithCognito,
   confirmSignUpWithCognito,
   exchangeCognitoCode,
+  forgotPasswordWithCognito,
   getCognitoConfig,
   loginWithCognitoPassword,
   readCognitoCallback,
@@ -610,6 +612,44 @@ export default function App() {
     }
   };
 
+  const handleForgotPassword = async (payload: { email: string }) => {
+    if (!cognitoConfig) {
+      setLoginError("ログイン設定が不足しています。");
+      return;
+    }
+
+    setIsLoading(true);
+    setLoginError(null);
+    try {
+      await forgotPasswordWithCognito(cognitoConfig, payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "パスワード再設定コードの送信に失敗しました。";
+      setLoginError(message);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleConfirmForgotPassword = async (payload: { email: string; code: string; newPassword: string }) => {
+    if (!cognitoConfig) {
+      setLoginError("ログイン設定が不足しています。");
+      return;
+    }
+
+    setIsLoading(true);
+    setLoginError(null);
+    try {
+      await confirmForgotPasswordWithCognito(cognitoConfig, payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "パスワードの再設定に失敗しました。";
+      setLoginError(message);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleLogout = () => {
     logout();
     setIsMenuOpen(false);
@@ -699,6 +739,8 @@ export default function App() {
               onSignUp={handleSignUp}
               onConfirmSignUp={handleConfirmSignUp}
               onResendConfirmationCode={handleResendConfirmationCode}
+              onForgotPassword={handleForgotPassword}
+              onConfirmForgotPassword={handleConfirmForgotPassword}
               authMode={authMode}
               isCognitoConfigured={Boolean(cognitoConfig)}
               isLoading={isLoading}

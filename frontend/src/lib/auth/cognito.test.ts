@@ -4,7 +4,10 @@ import {
   buildCognitoLoginUrl,
   buildCognitoLogoutUrl,
   buildCognitoSignupUrl,
+  confirmForgotPasswordWithCognito,
   exchangeCognitoCode,
+  forgotPasswordWithCognito,
+  loginWithCognitoPassword,
   normalizeJapanesePhoneNumber,
   readCognitoCallback,
   signUpWithCognito,
@@ -94,6 +97,68 @@ describe("cognito auth helpers", () => {
       "https://cognito-idp.ap-northeast-1.amazonaws.com/",
       expect.objectContaining({
         body: expect.stringContaining('"Value":"+819012345678"'),
+      }),
+    );
+  });
+
+  it("shows a friendly message when Cognito rejects an incorrect password", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 400,
+        headers: new Headers({ "x-amzn-errortype": "NotAuthorizedException:" }),
+        json: async () => ({ message: "Incorrect username or password." }),
+      })),
+    );
+
+    await expect(loginWithCognitoPassword(config, {
+      email: "user@example.com",
+      password: "wrong-password",
+    })).rejects.toThrow("メールアドレスまたはパスワードが正しくありません。");
+  });
+
+  it("sends and confirms a forgot password code", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      headers: new Headers(),
+      json: async () => ({}),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await forgotPasswordWithCognito(config, { email: "migrated@example.com" });
+    await confirmForgotPasswordWithCognito(config, {
+      email: "migrated@example.com",
+      code: "123456",
+      newPassword: "NewPassword1!",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://cognito-idp.ap-northeast-1.amazonaws.com/",
+      expect.objectContaining({
+        body: JSON.stringify({
+          ClientId: config.clientId,
+          Username: "migrated@example.com",
+        }),
+        headers: expect.objectContaining({
+          "X-Amz-Target": "AWSCognitoIdentityProviderService.ForgotPassword",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://cognito-idp.ap-northeast-1.amazonaws.com/",
+      expect.objectContaining({
+        body: JSON.stringify({
+          ClientId: config.clientId,
+          Username: "migrated@example.com",
+          ConfirmationCode: "123456",
+          Password: "NewPassword1!",
+        }),
+        headers: expect.objectContaining({
+          "X-Amz-Target": "AWSCognitoIdentityProviderService.ConfirmForgotPassword",
+        }),
       }),
     );
   });

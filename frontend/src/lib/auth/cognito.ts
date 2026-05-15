@@ -54,6 +54,14 @@ type ResendConfirmationCodeResponse = {
   };
 };
 
+type ForgotPasswordResponse = {
+  CodeDeliveryDetails?: {
+    AttributeName?: string;
+    DeliveryMedium?: string;
+    Destination?: string;
+  };
+};
+
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
 }
@@ -178,7 +186,7 @@ function friendlyCognitoError(errorType: string, fallback: string) {
     return normalizedFallback || "入力内容を確認してください。";
   }
   if (errorType.includes("PasswordResetRequiredException")) {
-    return "パスワード再設定が必要です。パスワード再設定から手続きしてください。";
+    return "パスワード再設定が必要です。確認コードを受け取り、新しいパスワードを設定してください。";
   }
   return normalizedFallback || "処理に失敗しました。時間をおいて再度お試しください。";
 }
@@ -195,8 +203,15 @@ async function callCognito<T>(config: CognitoConfig, action: string, payload: ob
 
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const errorType = String(body.__type ?? body.code ?? "");
-    throw new Error(friendlyCognitoError(errorType, body.message ?? ""));
+    const errorType = String(
+      body.__type ??
+      body.code ??
+      body.name ??
+      response.headers.get("x-amzn-errortype") ??
+      "",
+    );
+    const fallback = String(body.message ?? body.Message ?? "");
+    throw new Error(friendlyCognitoError(errorType || fallback, fallback));
   }
   return body as T;
 }
@@ -247,6 +262,25 @@ export function resendConfirmationCodeWithCognito(config: CognitoConfig, payload
   return callCognito<ResendConfirmationCodeResponse>(config, "ResendConfirmationCode", {
     ClientId: config.clientId,
     Username: payload.email,
+  });
+}
+
+export function forgotPasswordWithCognito(config: CognitoConfig, payload: { email: string }) {
+  return callCognito<ForgotPasswordResponse>(config, "ForgotPassword", {
+    ClientId: config.clientId,
+    Username: payload.email,
+  });
+}
+
+export function confirmForgotPasswordWithCognito(
+  config: CognitoConfig,
+  payload: { email: string; code: string; newPassword: string },
+) {
+  return callCognito(config, "ConfirmForgotPassword", {
+    ClientId: config.clientId,
+    Username: payload.email,
+    ConfirmationCode: payload.code,
+    Password: payload.newPassword,
   });
 }
 

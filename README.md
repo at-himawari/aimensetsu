@@ -97,11 +97,36 @@ npm run dev
 `VITE_AUTH_MODE=cognito` を使う場合は、フロントエンドにも以下の設定を入れます。
 
 ```bash
+VITE_AUTH_MODE=cognito
+VITE_API_BASE_URL=https://your-api.example.com
 VITE_COGNITO_DOMAIN=https://your-domain.auth.ap-northeast-1.amazoncognito.com
+VITE_COGNITO_REGION=ap-northeast-1
 VITE_COGNITO_CLIENT_ID=your-app-client-id
 VITE_COGNITO_REDIRECT_URI=http://localhost:5173
 VITE_COGNITO_LOGOUT_URI=http://localhost:5173
 ```
+
+#### フロントエンド CD
+
+GitHub Actions の `Frontend CD` workflow が、`main` ブランチへの frontend 変更を Cloudflare Workers にデプロイします。
+
+必要な GitHub Secrets:
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+
+必要な GitHub Variables:
+
+- `VITE_AUTH_MODE`
+- `VITE_API_BASE_URL`
+- `VITE_COGNITO_DOMAIN`
+- `VITE_COGNITO_REGION`
+- `VITE_COGNITO_CLIENT_ID`
+- `VITE_COGNITO_REDIRECT_URI`
+- `VITE_COGNITO_LOGOUT_URI`
+- `VITE_COGNITO_SCOPES`（任意。未設定時は `openid email profile`）
+
+`VITE_*` は Vite のビルド時に JavaScript へ埋め込まれます。Cloudflare の runtime 変数だけに設定しても反映されないため、GitHub Variables に入れてから再デプロイしてください。
 
 ## 開発用ログイン
 

@@ -8,6 +8,8 @@ type LoginScreenProps = {
   onSignUp: (payload: { email: string; password: string; phoneNumber: string; name?: string }) => Promise<void>;
   onConfirmSignUp: (payload: { email: string; code: string }) => Promise<void>;
   onResendConfirmationCode: (payload: { email: string }) => Promise<void>;
+  onForgotPassword: (payload: { email: string }) => Promise<void>;
+  onConfirmForgotPassword: (payload: { email: string; code: string; newPassword: string }) => Promise<void>;
   authMode?: "demo" | "cognito";
   isCognitoConfigured?: boolean;
   isLoading?: boolean;
@@ -21,17 +23,22 @@ export function LoginScreen({
   onSignUp,
   onConfirmSignUp,
   onResendConfirmationCode,
+  onForgotPassword,
+  onConfirmForgotPassword,
   authMode = "demo",
   isCognitoConfigured = false,
   isLoading = false,
   errorMessage = null,
 }: LoginScreenProps) {
   const storedConfirmationEmail = window.localStorage.getItem(PENDING_CONFIRMATION_EMAIL_KEY) ?? "";
-  const [mode, setMode] = useState<"login" | "signup" | "confirm">(storedConfirmationEmail ? "confirm" : "login");
+  const [mode, setMode] = useState<"login" | "signup" | "confirm" | "reset" | "reset-confirm">(
+    storedConfirmationEmail ? "confirm" : "login",
+  );
   const [email, setEmail] = useState(storedConfirmationEmail);
   const [name, setName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [confirmationCode, setConfirmationCode] = useState("");
   const [resendAvailableAt, setResendAvailableAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -53,6 +60,9 @@ export function LoginScreen({
     if (errorMessage?.includes("電話番号確認") && email) {
       window.localStorage.setItem(PENDING_CONFIRMATION_EMAIL_KEY, email);
       setMode("confirm");
+    }
+    if (errorMessage?.includes("パスワード再設定") && email) {
+      setMode("reset");
     }
   }, [email, errorMessage]);
 
@@ -97,16 +107,49 @@ export function LoginScreen({
     setLocalMessage("SMSで確認コードを再送しました。");
   };
 
+  const handleForgotPasswordSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLocalMessage(null);
+    await onForgotPassword({ email });
+    setMode("reset-confirm");
+    setPassword("");
+    setConfirmationCode("");
+    setLocalMessage("確認コードを送信しました。");
+  };
+
+  const handleConfirmForgotPasswordSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLocalMessage(null);
+    await onConfirmForgotPassword({ email, code: confirmationCode, newPassword });
+    setMode("login");
+    setPassword("");
+    setNewPassword("");
+    setConfirmationCode("");
+    setLocalMessage("パスワードを再設定しました。新しいパスワードでログインしてください。");
+  };
+
+  const title = mode === "signup"
+    ? "新規登録"
+    : mode === "confirm"
+      ? "電話番号確認"
+      : mode === "reset" || mode === "reset-confirm"
+        ? "パスワード再設定"
+        : "ログイン";
+
   return (
     <section className="screen-card login-screen-card">
       <p className="screen-label">Account</p>
-      <h2>{mode === "signup" ? "新規登録" : mode === "confirm" ? "電話番号確認" : "ログイン"}</h2>
+      <h2>{title}</h2>
       <p>
         {authMode === "cognito"
           ? "練習履歴と振り返りを保存して、次の面接準備につなげましょう。"
           : "開発中はデモログインからすぐに主要機能へ入れます。"}
       </p>
-      {errorMessage ? <p className="inline-error">{errorMessage}</p> : null}
+      {errorMessage ? (
+        <p className="inline-error" role="alert" aria-live="assertive">
+          {errorMessage}
+        </p>
+      ) : null}
       {localMessage ? <p className="inline-success">{localMessage}</p> : null}
       {authMode === "cognito" ? (
         <>
@@ -126,7 +169,7 @@ export function LoginScreen({
               className={mode === "signup" ? "auth-tab auth-tab-active" : "auth-tab"}
               onClick={() => setMode("signup")}
               aria-selected={mode === "signup"}
-              disabled={mode === "confirm"}
+              disabled={mode === "confirm" || mode === "reset-confirm"}
               role="tab"
             >
               新規登録
@@ -157,6 +200,16 @@ export function LoginScreen({
               </label>
               <button className="primary-button" type="submit" disabled={isLoading || !isCognitoConfigured}>
                 {isLoading ? "ログイン中" : "ログイン"}
+              </button>
+              <button
+                className="utility-link-button"
+                type="button"
+                onClick={() => {
+                  setLocalMessage(null);
+                  setMode("reset");
+                }}
+              >
+                パスワードを再設定する
               </button>
             </form>
           ) : null}
@@ -243,6 +296,60 @@ export function LoginScreen({
               </button>
             </form>
           ) : null}
+
+          {mode === "reset" ? (
+            <form className="auth-form" onSubmit={handleForgotPasswordSubmit}>
+              <label>
+                メールアドレス
+                <input
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
+                />
+              </label>
+              <button className="primary-button" type="submit" disabled={isLoading || !isCognitoConfigured}>
+                {isLoading ? "送信中" : "確認コードを送信"}
+              </button>
+              <button className="utility-link-button" type="button" onClick={() => setMode("login")}>
+                ログインに戻る
+              </button>
+            </form>
+          ) : null}
+
+          {mode === "reset-confirm" ? (
+            <form className="auth-form" onSubmit={handleConfirmForgotPasswordSubmit}>
+              <label>
+                確認コード
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={confirmationCode}
+                  onChange={(event) => setConfirmationCode(event.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                新しいパスワード
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  required
+                />
+              </label>
+              <p className="input-help">8文字以上で、英大文字・英小文字・数字・記号を含めてください。</p>
+              <button className="primary-button" type="submit" disabled={isLoading || !isCognitoConfigured}>
+                {isLoading ? "再設定中" : "パスワードを再設定"}
+              </button>
+              <button className="utility-link-button" type="button" onClick={() => setMode("reset")}>
+                確認コードを送り直す
+              </button>
+            </form>
+          ) : null}
         </>
       ) : (
         <div className="login-actions">
@@ -252,7 +359,9 @@ export function LoginScreen({
         </div>
       )}
       {authMode === "cognito" && !isCognitoConfigured ? (
-        <p className="inline-error">ログイン設定が不足しています。</p>
+        <p className="inline-error" role="alert" aria-live="assertive">
+          ログイン設定が不足しています。
+        </p>
       ) : null}
     </section>
   );
