@@ -16,6 +16,7 @@ from apps.billing.services import (
     _get_stripe_webhook_secret,
     create_checkout_session,
     confirm_checkout_session,
+    grant_initial_free_credits,
     handle_stripe_webhook,
     verify_webhook_signature,
 )
@@ -167,6 +168,18 @@ class BillingServicesTestCase(TestCase):
         self.assertEqual(payment.status, PaymentSession.Status.REFLECTED)
         self.assertEqual(self.user.credit_balance.available_minutes, 30)
         self.assertEqual(CreditTransaction.objects.count(), 1)
+
+    def test_initial_free_credits_are_granted_once(self):
+        grant_initial_free_credits(self.user)
+        grant_initial_free_credits(self.user)
+
+        self.user.credit_balance.refresh_from_db()
+        self.assertEqual(self.user.credit_balance.available_minutes, 15)
+        transaction = CreditTransaction.objects.get(user=self.user)
+        self.assertEqual(transaction.transaction_type, CreditTransaction.TransactionType.GRANT)
+        self.assertEqual(transaction.minutes_delta, 15)
+        self.assertEqual(transaction.amount_jpy, 0)
+        self.assertEqual(transaction.reason, "initial_free_credits")
 
     @patch("apps.billing.services._retrieve_stripe_checkout_session")
     def test_confirm_checkout_session_reflects_credit_when_stripe_reports_paid(self, mocked_retrieve):

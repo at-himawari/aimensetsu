@@ -5,6 +5,7 @@ import os
 
 from django.test import Client, TestCase
 
+from apps.billing.models import CreditTransaction
 from apps.users.models import AppUser
 
 
@@ -28,7 +29,19 @@ class UsersViewsTestCase(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(AppUser.objects.filter(user_id="demo_1").exists())
+        user = AppUser.objects.get(user_id="demo_1")
+        self.assertEqual(user.credit_balance.available_minutes, 15)
+        self.assertEqual(CreditTransaction.objects.get(user=user).minutes_delta, 15)
+
+        second_response = self.client.post(
+            "/api/auth/demo-login",
+            data=json.dumps({"demo_user_id": "demo_1", "name": "Demo User"}),
+            content_type="application/json",
+        )
+        self.assertEqual(second_response.status_code, 200)
+        user.credit_balance.refresh_from_db()
+        self.assertEqual(user.credit_balance.available_minutes, 15)
+        self.assertEqual(CreditTransaction.objects.filter(user=user).count(), 1)
 
     def test_me_requires_auth(self):
         response = self.client.get("/api/auth/me")

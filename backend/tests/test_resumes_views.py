@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -11,6 +12,7 @@ from apps.users.models import AppUser
 
 class ResumesViewsTestCase(TestCase):
     def setUp(self):
+        os.environ["AUTH_MODE"] = "demo"
         self.client = Client()
         self.user = AppUser.objects.create(
             user_id="resume_user",
@@ -52,6 +54,28 @@ class ResumesViewsTestCase(TestCase):
         self.assertTrue(body["has_extracted_text"])
         self.assertIn("Python", body["extracted_text_preview"])
         self.assertEqual(ResumeFile.objects.get(resume_id="res_test").extracted_text, "Python と Django の開発経験があります。")
+
+    def test_resume_upload_rejects_when_active_limit_is_reached(self):
+        for index in range(2):
+            ResumeFile.objects.create(
+                resume_id=f"res_limit_{index}",
+                user=self.user,
+                title=f"resume-{index}.pdf",
+                file_name=f"resume-{index}.pdf",
+                file_path=f"resumes/resume-{index}.pdf",
+                content_type="application/pdf",
+                file_size=123,
+            )
+
+        uploaded = SimpleUploadedFile("resume.pdf", b"%PDF-1.7 mock", content_type="application/pdf")
+        response = self.client.post(
+            "/api/resumes",
+            {"file": uploaded, "title": "resume.pdf"},
+            HTTP_X_DEMO_USER=self.user.user_id,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"]["code"], "RESUME_LIMIT_EXCEEDED")
 
     def test_resume_detail_not_found(self):
         response = self.client.get("/api/resumes/notfound", HTTP_X_DEMO_USER=self.user.user_id)

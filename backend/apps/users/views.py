@@ -23,7 +23,7 @@ def demo_login(request: HttpRequest):
     if not demo_user_id or not name:
         return json_error(request, "INVALID_REQUEST", "demo_user_id と name は必須です。", 400)
 
-    user, _ = AppUser.objects.get_or_create(
+    user, created = AppUser.objects.get_or_create(
         user_id=demo_user_id,
         defaults={
             "name": name,
@@ -31,6 +31,10 @@ def demo_login(request: HttpRequest):
             "role": AppUser.Role.USER,
         },
     )
+    if created:
+        from apps.billing.services import grant_initial_free_credits
+
+        grant_initial_free_credits(user)
     log_audit_event(
         action_type="demo_login",
         target_type="user",

@@ -140,3 +140,11 @@ class IntegrationsAIAndStorageTestCase(TestCase):
         storage.bucket_name = "bucket"
         storage.upload_fileobj(MagicMock(), "key", "application/pdf")
         instance.upload_fileobj.assert_called_once()
+
+    @patch("apps.integrations.storage.boto3.client")
+    def test_s3_storage_delete_file(self, mocked_client):
+        instance = mocked_client.return_value
+        storage = S3StorageClient()
+        storage.bucket_name = "bucket"
+        storage.delete_file("key")
+        instance.delete_object.assert_called_once_with(Bucket="bucket", Key="key")

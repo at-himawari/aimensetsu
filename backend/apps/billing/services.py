@@ -25,6 +25,8 @@ PRICE_TABLE = {
     }
 }
 STRIPE_API_VERSION = "2026-02-25.clover"
+INITIAL_FREE_CREDIT_MINUTES = int(os.getenv("INITIAL_FREE_CREDIT_MINUTES", "15"))
+INITIAL_FREE_CREDIT_REASON = "initial_free_credits"
 
 
 def _is_stripe_test_mode() -> bool:
@@ -95,6 +97,36 @@ def get_or_create_credit_balance(user: AppUser) -> CreditBalance:
             "balance_id": f"bal_{user.user_id}",
             "available_minutes": 0,
         },
+    )
+    return balance
+
+
+@transaction.atomic
+def grant_initial_free_credits(user: AppUser) -> CreditBalance:
+    balance, _ = CreditBalance.objects.select_for_update().get_or_create(
+        user=user,
+        defaults={
+            "balance_id": f"bal_{user.user_id}",
+            "available_minutes": 0,
+        },
+    )
+    already_granted = CreditTransaction.objects.filter(
+        user=user,
+        transaction_type=CreditTransaction.TransactionType.GRANT,
+        reason=INITIAL_FREE_CREDIT_REASON,
+    ).exists()
+    if already_granted:
+        return balance
+
+    balance.available_minutes += INITIAL_FREE_CREDIT_MINUTES
+    balance.save(update_fields=["available_minutes", "updated_at"])
+    CreditTransaction.objects.create(
+        transaction_id=generate_credit_transaction_id(),
+        user=user,
+        transaction_type=CreditTransaction.TransactionType.GRANT,
+        minutes_delta=INITIAL_FREE_CREDIT_MINUTES,
+        amount_jpy=0,
+        reason=INITIAL_FREE_CREDIT_REASON,
     )
     return balance
 

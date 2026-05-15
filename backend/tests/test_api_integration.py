@@ -77,8 +77,9 @@ class APIIntegrationTests(TestCase):
         self.assertEqual(profile_response.json()["data"]["display_name"], "面接練習ユーザー")
 
     @patch("apps.resumes.views.upload_resume_file", return_value="resumes/api_user/generated/resume.pdf")
+    @patch("apps.resumes.views.delete_resume_file")
     @patch("apps.resumes.views.generate_resume_id", return_value="res_uploaded")
-    def test_resume_api_flow(self, _generate_resume_id, _upload_resume_file):
+    def test_resume_api_flow(self, _generate_resume_id, _delete_resume_file, _upload_resume_file):
         self._login()
         upload = SimpleUploadedFile("resume.pdf", b"%PDF-1.7", content_type="application/pdf")
 
@@ -100,6 +101,7 @@ class APIIntegrationTests(TestCase):
 
         delete_response = self.client.delete("/api/resumes/res_uploaded/", **self.headers)
         self.assertEqual(delete_response.status_code, 200)
+        _delete_resume_file.assert_called_once_with("resumes/api_user/generated/resume.pdf")
         self.assertIsNotNone(ResumeFile.objects.get(resume_id="res_uploaded").deleted_at)
 
     def test_interview_session_and_reflection_api_flow(self):
@@ -149,7 +151,7 @@ class APIIntegrationTests(TestCase):
 
         balance_response = self.client.get("/api/credits/balance", **self.headers)
         self.assertEqual(balance_response.status_code, 200)
-        self.assertEqual(balance_response.json()["data"]["available_minutes"], 0)
+        self.assertEqual(balance_response.json()["data"]["available_minutes"], 15)
 
         checkout_response = self.client.post(
             "/api/billing/checkout-sessions",
@@ -190,11 +192,12 @@ class APIIntegrationTests(TestCase):
 
         balance_after_webhook = self.client.get("/api/credits/balance", **self.headers)
         self.assertEqual(balance_after_webhook.status_code, 200)
-        self.assertEqual(balance_after_webhook.json()["data"]["available_minutes"], 30)
+        self.assertEqual(balance_after_webhook.json()["data"]["available_minutes"], 45)
 
         transactions_response = self.client.get("/api/credits/transactions", **self.headers)
         self.assertEqual(transactions_response.status_code, 200)
         self.assertEqual(transactions_response.json()["data"][0]["transaction_type"], "purchase")
+        self.assertEqual(transactions_response.json()["data"][1]["transaction_type"], "grant")
 
     def test_admin_api_flow(self):
         admin = AppUser.objects.create(

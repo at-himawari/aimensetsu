@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+import logging
+
+from django.conf import settings
+
 from apps.common.auth import AuthenticationError
-from .auth import build_auth_adapter, load_auth_settings
+from .auth import CognitoJwtAuthAdapter, DemoAuthAdapter, load_auth_settings
+
+
+logger = logging.getLogger(__name__)
 
 
 class AuthenticationMiddleware:
@@ -14,10 +21,12 @@ class AuthenticationMiddleware:
 
         try:
             if self.settings.mode == "demo" and request.headers.get("X-Demo-User"):
-                request.principal = build_auth_adapter().authenticate(request)
+                request.principal = DemoAuthAdapter().authenticate(request)
             elif request.headers.get("Authorization"):
-                request.principal = build_auth_adapter().authenticate(request)
-        except AuthenticationError:
+                request.principal = CognitoJwtAuthAdapter(self.settings).authenticate(request)
+        except AuthenticationError as exc:
+            if settings.DEBUG:
+                logger.warning("Authentication failed: %s", exc)
             request.principal = None
 
         return self.get_response(request)

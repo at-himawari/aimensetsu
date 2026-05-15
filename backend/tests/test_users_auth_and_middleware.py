@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import jwt
 from django.test import RequestFactory, TestCase
 
+from apps.billing.models import CreditTransaction
 from apps.common.auth import AuthenticatedPrincipal, AuthenticationError, require_role
 from apps.users.auth import CognitoJwtAuthAdapter, DemoAuthAdapter, build_auth_adapter, load_auth_settings
 from apps.users.middleware import AuthenticationMiddleware
@@ -37,6 +38,9 @@ class UsersAuthAndMiddlewareTestCase(TestCase):
         request = self.factory.get("/", HTTP_X_DEMO_USER="demo_auth")
         principal = DemoAuthAdapter().authenticate(request)
         self.assertEqual(principal.user_id, "demo_auth")
+        user = AppUser.objects.get(user_id="demo_auth")
+        self.assertEqual(user.credit_balance.available_minutes, 15)
+        self.assertEqual(CreditTransaction.objects.get(user=user).minutes_delta, 15)
 
     def test_cognito_auth_adapter_missing_token_and_secret(self):
         settings = load_auth_settings()
@@ -69,6 +73,9 @@ class UsersAuthAndMiddlewareTestCase(TestCase):
         adapter = CognitoJwtAuthAdapter(load_auth_settings())
         principal = adapter.authenticate(self.factory.get("/", HTTP_AUTHORIZATION=f"Bearer {token}"))
         self.assertEqual(principal.roles, ["admin"])
+        user = AppUser.objects.get(user_id="sub_1")
+        self.assertEqual(user.credit_balance.available_minutes, 15)
+        self.assertEqual(CreditTransaction.objects.get(user=user).minutes_delta, 15)
 
     def test_cognito_auth_adapter_rejects_missing_subject(self):
         os.environ["AUTH_MODE"] = "cognito"
@@ -103,11 +110,24 @@ class UsersAuthAndMiddlewareTestCase(TestCase):
         response = middleware(request)
         self.assertEqual(response.principal.user_id, user.user_id)
 
-        with patch("apps.users.middleware.build_auth_adapter") as mocked_builder:
-            mocked_builder.return_value.authenticate.side_effect = AuthenticationError("bad")
+        with patch("apps.users.middleware.DemoAuthAdapter") as mocked_adapter:
+            mocked_adapter.return_value.authenticate.side_effect = AuthenticationError("bad")
             request = self.factory.get("/", HTTP_X_DEMO_USER=user.user_id)
             response = middleware(request)
             self.assertIsNone(response.principal)
+
+    @patch("apps.users.middleware.CognitoJwtAuthAdapter")
+    def test_authentication_middleware_uses_cognito_for_authorization_header(self, mocked_adapter):
+        os.environ["AUTH_MODE"] = "demo"
+        principal = AuthenticatedPrincipal("cognito_sub", "user@example.com", "cognito", ["user"])
+        mocked_adapter.return_value.authenticate.return_value = principal
+
+        middleware = AuthenticationMiddleware(lambda request: request)
+        request = self.factory.get("/", HTTP_AUTHORIZATION="Bearer token")
+        response = middleware(request)
+
+        self.assertEqual(response.principal, principal)
+        mocked_adapter.return_value.authenticate.assert_called_once_with(request)
 
     def test_require_role_success_path(self):
         @require_role("admin")

@@ -4,6 +4,7 @@ import os
 import re
 import uuid
 import zlib
+from itertools import islice
 
 from django.conf import settings
 from django.core.files.uploadedfile import UploadedFile
@@ -15,6 +16,8 @@ from apps.integrations.storage import S3StorageClient
 ALLOWED_RESUME_CONTENT_TYPES = {"application/pdf"}
 MAX_RESUME_FILE_SIZE_BYTES = int(os.getenv("RESUME_MAX_FILE_SIZE_BYTES", str(50 * 1024 * 1024)))
 MAX_EXTRACTED_RESUME_TEXT_CHARS = int(os.getenv("RESUME_EXTRACTED_TEXT_MAX_CHARS", "20000"))
+MAX_EXTRACTED_RESUME_PAGES = int(os.getenv("RESUME_EXTRACTED_TEXT_MAX_PAGES", "10"))
+MAX_ACTIVE_RESUME_FILES_PER_USER = int(os.getenv("RESUME_MAX_ACTIVE_FILES_PER_USER", "2"))
 
 
 def validate_resume_file(uploaded_file: UploadedFile) -> None:
@@ -141,7 +144,7 @@ def extract_resume_text(uploaded_file: UploadedFile) -> str:
 
     try:
         reader = PdfReader(uploaded_file.file)
-        text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        text = "\n".join(page.extract_text() or "" for page in islice(reader.pages, MAX_EXTRACTED_RESUME_PAGES))
         return _normalize_extracted_text(text)
     except Exception:  # noqa: BLE001
         return _extract_pdf_text_without_dependency(pdf_bytes)
@@ -163,3 +166,13 @@ def upload_resume_file(user_id: str, resume_id: str, uploaded_file: UploadedFile
     storage = S3StorageClient()
     storage.upload_fileobj(uploaded_file.file, key, uploaded_file.content_type)
     return key
+
+
+def delete_resume_file(file_path: str) -> None:
+    if not os.getenv("S3_BUCKET_NAME"):
+        if default_storage.exists(file_path):
+            default_storage.delete(file_path)
+        return
+
+    storage = S3StorageClient()
+    storage.delete_file(file_path)

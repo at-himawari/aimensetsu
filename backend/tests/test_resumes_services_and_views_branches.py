@@ -11,6 +11,7 @@ from apps.resumes.models import ResumeFile
 from apps.resumes.services import (
     _extract_pdf_text_without_dependency,
     build_resume_key,
+    delete_resume_file,
     generate_resume_id,
     upload_resume_file,
     validate_resume_file,
@@ -20,6 +21,7 @@ from apps.users.models import AppUser
 
 class ResumesServicesAndViewsBranchesTestCase(TestCase):
     def setUp(self):
+        os.environ["AUTH_MODE"] = "demo"
         self.client = Client()
         self.user = AppUser.objects.create(
             user_id="resume_branch",
@@ -49,6 +51,12 @@ class ResumesServicesAndViewsBranchesTestCase(TestCase):
         self.assertEqual(key, "resumes/u1/r1/resume.pdf")
         mocked_upload.assert_called_once()
 
+    @patch.dict(os.environ, {"S3_BUCKET_NAME": "bucket"})
+    @patch("apps.resumes.services.S3StorageClient.delete_file")
+    def test_delete_resume_file_from_s3(self, mocked_delete):
+        delete_resume_file("resumes/u1/r1/resume.pdf")
+        mocked_delete.assert_called_once_with("resumes/u1/r1/resume.pdf")
+
     @patch("apps.resumes.views.extract_resume_text", return_value="")
     @patch("apps.resumes.views.upload_resume_file", side_effect=Exception("s3 fail"))
     def test_resume_upload_returns_503_on_s3_error(self, _mocked_upload, _mocked_extract):
@@ -56,9 +64,28 @@ class ResumesServicesAndViewsBranchesTestCase(TestCase):
         response = self.client.post("/api/resumes", {"file": uploaded}, HTTP_X_DEMO_USER=self.user.user_id)
         self.assertEqual(response.status_code, 503)
 
+    @patch("apps.resumes.views.delete_resume_file", side_effect=Exception("delete fail"))
+    def test_resume_delete_returns_503_when_storage_delete_fails(self, _mocked_delete):
+        resume = ResumeFile.objects.create(
+            resume_id="res_delete_fail",
+            user=self.user,
+            title="resume.pdf",
+            file_name="resume.pdf",
+            file_path="resumes/u/r/resume.pdf",
+            content_type="application/pdf",
+            file_size=123,
+        )
+
+        response = self.client.delete(f"/api/resumes/{resume.resume_id}/", HTTP_X_DEMO_USER=self.user.user_id)
+
+        self.assertEqual(response.status_code, 503)
+        resume.refresh_from_db()
+        self.assertIsNone(resume.deleted_at)
+
     @patch("apps.resumes.views.extract_resume_text", return_value="My resume text")
     @patch("apps.resumes.views.upload_resume_file", return_value="resumes/u/r/resume.pdf")
-    def test_resume_upload_and_list_and_delete(self, _mocked_upload, _mocked_extract):
+    @patch("apps.resumes.views.delete_resume_file")
+    def test_resume_upload_and_list_and_delete(self, mocked_delete, _mocked_upload, _mocked_extract):
         uploaded = SimpleUploadedFile("resume.pdf", b"pdf", content_type="application/pdf")
         create = self.client.post(
             "/api/resumes",
@@ -73,6 +100,7 @@ class ResumesServicesAndViewsBranchesTestCase(TestCase):
 
         delete = self.client.delete(f"/api/resumes/{resume_id}/", HTTP_X_DEMO_USER=self.user.user_id)
         self.assertEqual(delete.status_code, 200)
+        mocked_delete.assert_called_once_with("resumes/u/r/resume.pdf")
 
         missing_delete = self.client.delete(f"/api/resumes/{resume_id}/", HTTP_X_DEMO_USER=self.user.user_id)
         self.assertEqual(missing_delete.status_code, 404)

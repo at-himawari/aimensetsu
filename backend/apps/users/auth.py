@@ -48,7 +48,7 @@ class DemoAuthAdapter:
         if not demo_user_id:
             raise AuthenticationError("demo user header is missing")
 
-        user, _ = AppUser.objects.get_or_create(
+        user, created = AppUser.objects.get_or_create(
             user_id=demo_user_id,
             defaults={
                 "name": f"Demo {demo_user_id}",
@@ -56,6 +56,10 @@ class DemoAuthAdapter:
                 "role": AppUser.Role.USER,
             },
         )
+        if created:
+            from apps.billing.services import grant_initial_free_credits
+
+            grant_initial_free_credits(user)
         return AuthenticatedPrincipal(
             user_id=user.user_id,
             email=user.email,
@@ -80,7 +84,7 @@ class CognitoJwtAuthAdapter:
         try:
             unverified_payload = jwt.decode(token, options={"verify_signature": False})
         except jwt.PyJWTError as exc:
-            raise AuthenticationError("invalid cognito token") from exc
+            raise AuthenticationError(f"invalid cognito token: {exc}") from exc
         token_use = unverified_payload.get("token_use")
         decode_options = {}
         decode_kwargs = {
@@ -112,12 +116,20 @@ class CognitoJwtAuthAdapter:
                     **decode_kwargs,
                 )
         except jwt.PyJWTError as exc:
-            raise AuthenticationError("invalid cognito token") from exc
+            raise AuthenticationError(f"invalid cognito token: {exc}") from exc
+
+        issuer = payload.get("iss")
+        if self.settings.cognito_issuer and issuer != self.settings.cognito_issuer:
+            raise AuthenticationError("token issuer is invalid")
 
         if token_use == "access" and self.settings.cognito_audience:
             client_id = payload.get("client_id")
             if client_id != self.settings.cognito_audience:
                 raise AuthenticationError("token client id is invalid")
+        if token_use != "access" and self.settings.cognito_audience:
+            audience = payload.get("aud")
+            if audience != self.settings.cognito_audience:
+                raise AuthenticationError("token audience is invalid")
 
         exp = payload.get("exp")
         if exp is not None and exp < int(time.time()):
@@ -130,7 +142,7 @@ class CognitoJwtAuthAdapter:
         email = payload.get("email")
         phone_number = payload.get("phone_number")
         role = AppUser.Role.ADMIN if "admin" in payload.get("cognito:groups", []) else AppUser.Role.USER
-        user, _ = AppUser.objects.get_or_create(
+        user, created = AppUser.objects.get_or_create(
             user_id=subject,
             defaults={
                 "name": payload.get("name") or email or subject,
@@ -141,6 +153,10 @@ class CognitoJwtAuthAdapter:
                 "role": role,
             },
         )
+        if created:
+            from apps.billing.services import grant_initial_free_credits
+
+            grant_initial_free_credits(user)
         return AuthenticatedPrincipal(
             user_id=user.user_id,
             email=user.email,
