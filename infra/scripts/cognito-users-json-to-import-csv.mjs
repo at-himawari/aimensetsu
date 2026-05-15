@@ -31,6 +31,9 @@ function parseArgs(argv) {
     input: null,
     output: null,
     headers: null,
+    defaultPhoneNumber: null,
+    requiredAttributes: ["email"],
+    usernameAttribute: "email",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -45,11 +48,20 @@ function parseArgs(argv) {
     } else if (current === "--headers") {
       args.headers = next;
       index += 1;
+    } else if (current === "--default-phone-number") {
+      args.defaultPhoneNumber = normalizePhoneNumber(next);
+      index += 1;
+    } else if (current === "--required-attributes") {
+      args.requiredAttributes = next.split(",").map((value) => value.trim()).filter(Boolean);
+      index += 1;
+    } else if (current === "--username-attribute") {
+      args.usernameAttribute = next;
+      index += 1;
     }
   }
 
   if (!args.input || !args.output) {
-    throw new Error("Usage: node scripts/cognito-users-json-to-import-csv.mjs --input old-users.json --output import-users.csv [--headers csv-header.json]");
+    throw new Error("Usage: node scripts/cognito-users-json-to-import-csv.mjs --input old-users.json --output import-users.csv [--headers csv-header.json] [--default-phone-number 09012345678] [--required-attributes email] [--username-attribute email]");
   }
   return args;
 }
@@ -74,6 +86,30 @@ function attributesToObject(attributes = []) {
   );
 }
 
+function normalizePhoneNumber(phoneNumber) {
+  const normalizedDigits = String(phoneNumber ?? "")
+    .trim()
+    .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+    .replace(/[-ー−\s()（）]/g, "");
+
+  if (/^\+81\d{9,10}$/.test(normalizedDigits)) {
+    return normalizedDigits;
+  }
+  if (/^0\d{9,10}$/.test(normalizedDigits)) {
+    return `+81${normalizedDigits.slice(1)}`;
+  }
+  throw new Error("Default phone number must be a Japanese domestic number or +81 E.164 number.");
+}
+
+function applyDefaults(user, defaultPhoneNumber) {
+  const attributes = attributesToObject(user.Attributes ?? user.UserAttributes);
+  if (!attributes.phone_number && defaultPhoneNumber) {
+    attributes.phone_number = defaultPhoneNumber;
+    attributes.phone_number_verified = attributes.phone_number_verified ?? "true";
+  }
+  return attributes;
+}
+
 function getUsers(inputJson) {
   if (Array.isArray(inputJson)) {
     return inputJson;
@@ -84,6 +120,38 @@ function getUsers(inputJson) {
   throw new Error("Input JSON must be an AWS Cognito list-users response or an array of users.");
 }
 
+function validateUsers(users, requiredAttributes, defaultPhoneNumber) {
+  const missingRequiredAttributes = [];
+  const phoneNumberOwners = new Map();
+  const duplicatePhoneNumbers = [];
+
+  users.forEach((user) => {
+    const attributes = applyDefaults(user, defaultPhoneNumber);
+    requiredAttributes.forEach((attributeName) => {
+      if (!attributes[attributeName]) {
+        missingRequiredAttributes.push(`${user.Username ?? "(missing username)"}:${attributeName}`);
+      }
+    });
+
+    const phoneNumber = attributes.phone_number;
+    if (phoneNumber && phoneNumber !== defaultPhoneNumber) {
+      const existingOwner = phoneNumberOwners.get(phoneNumber);
+      if (existingOwner && existingOwner !== user.Username) {
+        duplicatePhoneNumbers.push(`${phoneNumber} (${existingOwner}, ${user.Username})`);
+      } else {
+        phoneNumberOwners.set(phoneNumber, user.Username);
+      }
+    }
+  });
+
+  if (missingRequiredAttributes.length > 0) {
+    throw new Error(`Missing required attributes: ${missingRequiredAttributes.join(", ")}`);
+  }
+  if (duplicatePhoneNumbers.length > 0) {
+    throw new Error(`Duplicate phone_number values: ${duplicatePhoneNumbers.join(", ")}`);
+  }
+}
+
 function csvEscape(value) {
   const text = String(value ?? "");
   if (text.includes(",") || text.includes("\n") || text.includes('"')) {
@@ -92,9 +160,9 @@ function csvEscape(value) {
   return text;
 }
 
-function valueForHeader(header, user, attributes) {
+function valueForHeader(header, user, attributes, usernameAttribute) {
   if (header === "cognito:username") {
-    return user.Username;
+    return attributes[usernameAttribute] ?? user.Username;
   }
   if (header === "cognito:mfa_enabled") {
     return "";
@@ -116,12 +184,13 @@ function main() {
   const headers = getHeaders(args.headers);
   const inputJson = readJson(args.input);
   const users = getUsers(inputJson);
+  validateUsers(users, args.requiredAttributes, args.defaultPhoneNumber);
 
   const rows = [
     headers.map(csvEscape).join(","),
     ...users.map((user) => {
-      const attributes = attributesToObject(user.Attributes ?? user.UserAttributes);
-      return headers.map((header) => csvEscape(valueForHeader(header, user, attributes))).join(",");
+      const attributes = applyDefaults(user, args.defaultPhoneNumber);
+      return headers.map((header) => csvEscape(valueForHeader(header, user, attributes, args.usernameAttribute))).join(",");
     }),
   ];
 

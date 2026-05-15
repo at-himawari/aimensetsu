@@ -33,7 +33,7 @@ export class AimensetsuAppStack extends cdk.Stack {
           mutable: true,
         },
         phoneNumber: {
-          required: true,
+          required: false,
           mutable: true,
         },
       },
@@ -57,7 +57,7 @@ export class AimensetsuAppStack extends cdk.Stack {
         attributeDataType: "String",
         mutable: true,
         name: "phone_number",
-        required: true,
+        required: false,
       },
     ];
 
@@ -100,6 +100,31 @@ exports.handler = async (event) => {
       ],
     }));
     userPool.addTrigger(cognito.UserPoolOperation.PRE_SIGN_UP, preventDuplicatePhoneSignUp);
+
+    const userImportLogsRole = new iam.Role(this, "CognitoUserImportLogsRole", {
+      assumedBy: new iam.ServicePrincipal("cognito-idp.amazonaws.com"),
+      description: "Allows Cognito user import jobs to write CloudWatch Logs.",
+    });
+    userImportLogsRole.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:DescribeLogStreams",
+        "logs:PutLogEvents",
+      ],
+      resources: [
+        cdk.Stack.of(this).formatArn({
+          service: "logs",
+          resource: "log-group",
+          resourceName: "/aws/cognito/*",
+        }),
+        cdk.Stack.of(this).formatArn({
+          service: "logs",
+          resource: "log-group",
+          resourceName: "/aws/cognito/*:*",
+        }),
+      ],
+    }));
 
     const userPoolClient = new cognito.UserPoolClient(this, "UserPoolClientWithPhoneNumber", {
       userPool,
@@ -146,6 +171,10 @@ exports.handler = async (event) => {
 
     new cdk.CfnOutput(this, "CognitoRegion", {
       value: cdk.Stack.of(this).region,
+    });
+
+    new cdk.CfnOutput(this, "CognitoUserImportLogsRoleArn", {
+      value: userImportLogsRole.roleArn,
     });
   }
 }
