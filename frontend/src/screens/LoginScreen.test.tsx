@@ -85,10 +85,10 @@ describe("LoginScreen", () => {
 
   it("announces an incorrect password message on the login form", () => {
     renderLoginScreen({
-      errorMessage: "メールアドレスまたはパスワードが正しくありません。",
+      errorMessage: "メールアドレスまたはパスワードが間違っています。",
     });
 
-    expect(screen.getByRole("alert")).toHaveTextContent("メールアドレスまたはパスワードが正しくありません。");
+    expect(screen.getByRole("alert")).toHaveTextContent("メールアドレスまたはパスワードが間違っています。");
   });
 
   it("moves migrated users to password reset when Cognito requires it", async () => {

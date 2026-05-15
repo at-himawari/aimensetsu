@@ -157,8 +157,13 @@ function friendlyCognitoError(errorType: string, fallback: string) {
     ? fallback.slice(preSignUpPrefix.length).replace(/\.$/, "")
     : fallback;
 
-  if (errorType.includes("NotAuthorizedException")) {
-    return "メールアドレスまたはパスワードが正しくありません。";
+  if (
+    errorType.includes("NotAuthorizedException") ||
+    errorType.includes("UserNotFoundException") ||
+    normalizedFallback.includes("Incorrect username or password") ||
+    normalizedFallback.includes("User does not exist")
+  ) {
+    return "メールアドレスまたはパスワードが間違っています。";
   }
   if (errorType.includes("UsernameExistsException")) {
     return "このメールアドレスはすでに登録されています。";
@@ -187,7 +192,7 @@ function friendlyCognitoError(errorType: string, fallback: string) {
   if (errorType.includes("PasswordResetRequiredException")) {
     return "パスワード再設定が必要です。確認コードを受け取り、新しいパスワードを設定してください。";
   }
-  return normalizedFallback || "処理に失敗しました。時間をおいて再度お試しください。";
+  return "原因不明なエラーが発生しました。";
 }
 
 async function callCognito<T>(config: CognitoConfig, action: string, payload: object): Promise<T> {

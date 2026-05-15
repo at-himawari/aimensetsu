@@ -125,7 +125,41 @@ describe("cognito auth helpers", () => {
     await expect(loginWithCognitoPassword(config, {
       email: "user@example.com",
       password: "wrong-password",
-    })).rejects.toThrow("メールアドレスまたはパスワードが正しくありません。");
+    })).rejects.toThrow("メールアドレスまたはパスワードが間違っています。");
+  });
+
+  it("shows the same friendly message when Cognito cannot find the user", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 400,
+        headers: new Headers(),
+        json: async () => ({ message: "User does not exist." }),
+      })),
+    );
+
+    await expect(loginWithCognitoPassword(config, {
+      email: "missing@example.com",
+      password: "Password1!",
+    })).rejects.toThrow("メールアドレスまたはパスワードが間違っています。");
+  });
+
+  it("hides unrecognized Cognito error details behind an unknown error message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 400,
+        headers: new Headers({ "x-amzn-errortype": "UnexpectedCognitoException:" }),
+        json: async () => ({ message: "Raw provider error detail." }),
+      })),
+    );
+
+    await expect(loginWithCognitoPassword(config, {
+      email: "user@example.com",
+      password: "Password1!",
+    })).rejects.toThrow("原因不明なエラーが発生しました。");
   });
 
   it("shows a useful message when imported users have no verified recovery attribute", async () => {
