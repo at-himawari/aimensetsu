@@ -23,6 +23,14 @@ type CognitoAttribute = {
   Value: string;
 };
 
+export type CognitoUserAttributeMap = Record<string, string>;
+
+export type CognitoCodeDeliveryDetails = {
+  AttributeName?: string;
+  DeliveryMedium?: string;
+  Destination?: string;
+};
+
 type CognitoAuthResult = {
   AccessToken?: string;
   IdToken?: string;
@@ -37,29 +45,17 @@ type InitiateAuthResponse = {
 };
 
 type SignUpResponse = {
-  CodeDeliveryDetails?: {
-    AttributeName?: string;
-    DeliveryMedium?: string;
-    Destination?: string;
-  };
+  CodeDeliveryDetails?: CognitoCodeDeliveryDetails;
   UserConfirmed?: boolean;
   UserSub?: string;
 };
 
 type ResendConfirmationCodeResponse = {
-  CodeDeliveryDetails?: {
-    AttributeName?: string;
-    DeliveryMedium?: string;
-    Destination?: string;
-  };
+  CodeDeliveryDetails?: CognitoCodeDeliveryDetails;
 };
 
 type ForgotPasswordResponse = {
-  CodeDeliveryDetails?: {
-    AttributeName?: string;
-    DeliveryMedium?: string;
-    Destination?: string;
-  };
+  CodeDeliveryDetails?: CognitoCodeDeliveryDetails;
 };
 
 function trimTrailingSlash(value: string) {
@@ -171,7 +167,7 @@ function friendlyCognitoError(errorType: string, fallback: string) {
     return "確認コードの送信回数が多すぎます。しばらく待ってから再度お試しください。";
   }
   if (errorType.includes("UserNotConfirmedException")) {
-    return "電話番号確認が完了していません。SMSの確認コードを入力してください。";
+    return "メール確認が完了していません。メールの確認コードを入力してください。";
   }
   if (errorType.includes("CodeMismatchException")) {
     return "確認コードが正しくありません。";
@@ -183,6 +179,9 @@ function friendlyCognitoError(errorType: string, fallback: string) {
     return "パスワードは8文字以上で、英大文字・英小文字・数字・記号を含めてください。";
   }
   if (errorType.includes("InvalidParameterException")) {
+    if (normalizedFallback.includes("no registered/verified email or phone_number")) {
+      return "確認コードを送信できませんでした。旧システム登録者のメールアドレスまたは電話番号がCognitoで確認済みになっているか確認してください。";
+    }
     return normalizedFallback || "入力内容を確認してください。";
   }
   if (errorType.includes("PasswordResetRequiredException")) {
@@ -231,12 +230,10 @@ export function normalizeJapanesePhoneNumber(phoneNumber: string) {
 
 export async function signUpWithCognito(
   config: CognitoConfig,
-  payload: { email: string; password: string; phoneNumber: string; name?: string },
+  payload: { email: string; password: string; name?: string },
 ) {
-  const phoneNumber = normalizeJapanesePhoneNumber(payload.phoneNumber);
   const userAttributes: CognitoAttribute[] = [
     { Name: "email", Value: payload.email },
-    { Name: "phone_number", Value: phoneNumber },
   ];
   if (payload.name) {
     userAttributes.push({ Name: "name", Value: payload.name });
@@ -247,6 +244,39 @@ export async function signUpWithCognito(
     Username: payload.email,
     Password: payload.password,
     UserAttributes: userAttributes,
+  });
+}
+
+function attributesToMap(attributes: CognitoAttribute[] = []): CognitoUserAttributeMap {
+  return Object.fromEntries(
+    attributes
+      .filter((attribute) => attribute.Name && attribute.Value != null)
+      .map((attribute) => [attribute.Name, attribute.Value]),
+  );
+}
+
+export async function getCognitoUser(config: CognitoConfig, accessToken: string) {
+  const response = await callCognito<{ UserAttributes?: CognitoAttribute[] }>(config, "GetUser", {
+    AccessToken: accessToken,
+  });
+  return attributesToMap(response.UserAttributes);
+}
+
+export async function updateCognitoPhoneNumber(config: CognitoConfig, payload: { accessToken: string; phoneNumber: string }) {
+  const phoneNumber = normalizeJapanesePhoneNumber(payload.phoneNumber);
+  await callCognito(config, "UpdateUserAttributes", {
+    AccessToken: payload.accessToken,
+    UserAttributes: [
+      { Name: "phone_number", Value: phoneNumber },
+    ],
+  });
+}
+
+export function verifyCognitoPhoneNumber(config: CognitoConfig, payload: { accessToken: string; code: string }) {
+  return callCognito(config, "VerifyUserAttribute", {
+    AccessToken: payload.accessToken,
+    AttributeName: "phone_number",
+    Code: payload.code,
   });
 }
 

@@ -84,6 +84,35 @@ describe("api client", () => {
     } satisfies Partial<ApiError>);
   });
 
+  it("prepares a phone number update", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          phone_number: "+818011112222",
+        },
+        meta: { request_id: "req_phone" },
+      }),
+    });
+    const client = createApiClient({ baseUrl: "", fetchImpl: fetchMock as typeof fetch });
+
+    const response = await client.preparePhoneNumberUpdate(
+      { mode: "jwt", demoUserId: null, accessToken: "access-token" },
+      "080-1111-2222",
+    );
+
+    expect(response.data.phone_number).toBe("+818011112222");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/users/phone-number/prepare",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ phone_number: "080-1111-2222" }),
+      }),
+    );
+    const headers = fetchMock.mock.calls[0][1].headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer access-token");
+  });
+
   it("uploads resumes as multipart form data", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

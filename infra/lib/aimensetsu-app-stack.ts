@@ -24,7 +24,7 @@ export class AimensetsuAppStack extends cdk.Stack {
         email: true,
       },
       autoVerify: {
-        email: false,
+        email: true,
         phone: true,
       },
       standardAttributes: {
@@ -72,7 +72,7 @@ const client = new CognitoIdentityProviderClient({});
 exports.handler = async (event) => {
   const phoneNumber = event.request.userAttributes.phone_number;
   if (!phoneNumber) {
-    throw new Error("電話番号を入力してください。");
+    return event;
   }
 
   const response = await client.send(new ListUsersCommand({

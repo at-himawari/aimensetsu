@@ -4,6 +4,7 @@ import { BillingScreen } from "./screens/BillingScreen";
 import { HistoryListScreen } from "./screens/HistoryListScreen";
 import { HomeScreen } from "./screens/HomeScreen";
 import { LoginScreen } from "./screens/LoginScreen";
+import { PhoneSetupScreen } from "./screens/PhoneSetupScreen";
 import { ReflectionScreen } from "./screens/ReflectionScreen";
 import { ResumeScreen } from "./screens/ResumeScreen";
 import { SessionScreen } from "./screens/SessionScreen";
@@ -13,11 +14,15 @@ import {
   confirmSignUpWithCognito,
   exchangeCognitoCode,
   forgotPasswordWithCognito,
+  getCognitoUser,
   getCognitoConfig,
   loginWithCognitoPassword,
   readCognitoCallback,
   resendConfirmationCodeWithCognito,
   signUpWithCognito,
+  updateCognitoPhoneNumber,
+  verifyCognitoPhoneNumber,
+  type CognitoCodeDeliveryDetails,
 } from "./lib/auth/cognito";
 import { ApiError, createApiClient, type InterviewMessage, type InterviewSession, type Reflection, type ResumeFile } from "./lib/api/client";
 import { useAuth, type AuthState } from "./state/auth";
@@ -136,6 +141,8 @@ export default function App() {
         : false;
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [phoneSetupError, setPhoneSetupError] = useState<string | null>(null);
+  const [isPhoneSetupCodeSent, setIsPhoneSetupCodeSent] = useState(false);
   const [screen, setScreen] = useState<ScreenKey>("login");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [creditBalanceMinutes, setCreditBalanceMinutes] = useState(30);
@@ -156,6 +163,15 @@ export default function App() {
     historyItems.find((item) => item.id === selectedHistoryId) ?? historyItems[0] ?? null;
 
   const completeLogin = async (nextAuthState: AuthState) => {
+    if (authMode === "cognito" && cognitoConfig && nextAuthState.mode === "jwt" && nextAuthState.accessToken) {
+      const userAttributes = await getCognitoUser(cognitoConfig, nextAuthState.accessToken);
+      if (userAttributes.phone_number_verified !== "true") {
+        setPhoneSetupError(null);
+        setIsPhoneSetupCodeSent(false);
+        setScreen("phone-setup");
+        return;
+      }
+    }
     await Promise.all([
       loadResumes(nextAuthState),
       loadCreditBalance(nextAuthState),
@@ -555,16 +571,17 @@ export default function App() {
     }
   };
 
-  const handleSignUp = async (payload: { email: string; password: string; phoneNumber: string; name?: string }) => {
+  const handleSignUp = async (payload: { email: string; password: string; name?: string }): Promise<CognitoCodeDeliveryDetails | undefined> => {
     if (!cognitoConfig) {
       setLoginError("ログイン設定が不足しています。");
-      return;
+      return undefined;
     }
 
     setIsLoading(true);
     setLoginError(null);
     try {
-      await signUpWithCognito(cognitoConfig, payload);
+      const response = await signUpWithCognito(cognitoConfig, payload);
+      return response.CodeDeliveryDetails;
     } catch (error) {
       const message = error instanceof Error ? error.message : "新規登録に失敗しました。";
       setLoginError(message);
@@ -593,16 +610,17 @@ export default function App() {
     }
   };
 
-  const handleResendConfirmationCode = async (payload: { email: string }) => {
+  const handleResendConfirmationCode = async (payload: { email: string }): Promise<CognitoCodeDeliveryDetails | undefined> => {
     if (!cognitoConfig) {
       setLoginError("ログイン設定が不足しています。");
-      return;
+      return undefined;
     }
 
     setIsLoading(true);
     setLoginError(null);
     try {
-      await resendConfirmationCodeWithCognito(cognitoConfig, payload);
+      const response = await resendConfirmationCodeWithCognito(cognitoConfig, payload);
+      return response.CodeDeliveryDetails;
     } catch (error) {
       const message = error instanceof Error ? error.message : "確認コードの再送に失敗しました。";
       setLoginError(message);
@@ -612,16 +630,17 @@ export default function App() {
     }
   };
 
-  const handleForgotPassword = async (payload: { email: string }) => {
+  const handleForgotPassword = async (payload: { email: string }): Promise<CognitoCodeDeliveryDetails | undefined> => {
     if (!cognitoConfig) {
       setLoginError("ログイン設定が不足しています。");
-      return;
+      return undefined;
     }
 
     setIsLoading(true);
     setLoginError(null);
     try {
-      await forgotPasswordWithCognito(cognitoConfig, payload);
+      const response = await forgotPasswordWithCognito(cognitoConfig, payload);
+      return response.CodeDeliveryDetails;
     } catch (error) {
       const message = error instanceof Error ? error.message : "パスワード再設定コードの送信に失敗しました。";
       setLoginError(message);
@@ -631,7 +650,7 @@ export default function App() {
     }
   };
 
-  const handleConfirmForgotPassword = async (payload: { email: string; code: string; newPassword: string }) => {
+  const handleConfirmForgotPassword = async (payload: { email: string; code: string; newPassword: string; phoneNumber: string }) => {
     if (!cognitoConfig) {
       setLoginError("ログイン設定が不足しています。");
       return;
@@ -641,9 +660,78 @@ export default function App() {
     setLoginError(null);
     try {
       await confirmForgotPasswordWithCognito(cognitoConfig, payload);
+      const tokenResponse = await loginWithCognitoPassword(cognitoConfig, {
+        email: payload.email,
+        password: payload.newPassword,
+      });
+      const token = tokenResponse.accessToken;
+      if (!token) {
+        throw new Error("ログイン情報を取得できませんでした。");
+      }
+      const nextAuthState: AuthState = {
+        mode: "jwt",
+        demoUserId: null,
+        accessToken: token,
+      };
+      setJwt(token);
+      await apiClient.preparePhoneNumberUpdate(nextAuthState, payload.phoneNumber);
+      await updateCognitoPhoneNumber(cognitoConfig, {
+        accessToken: token,
+        phoneNumber: payload.phoneNumber,
+      });
+      setIsPhoneSetupCodeSent(true);
+      setPhoneSetupError(null);
+      setScreen("phone-setup");
     } catch (error) {
       const message = error instanceof Error ? error.message : "パスワードの再設定に失敗しました。";
       setLoginError(message);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSendPhoneCode = async (phoneNumber: string) => {
+    if (!cognitoConfig || authState.mode !== "jwt" || !authState.accessToken) {
+      setPhoneSetupError("ログイン情報を確認できませんでした。もう一度ログインしてください。");
+      return;
+    }
+
+    setIsLoading(true);
+    setPhoneSetupError(null);
+    try {
+      await apiClient.preparePhoneNumberUpdate(authState, phoneNumber);
+      await updateCognitoPhoneNumber(cognitoConfig, {
+        accessToken: authState.accessToken,
+        phoneNumber,
+      });
+      setIsPhoneSetupCodeSent(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "確認コードの送信に失敗しました。";
+      setPhoneSetupError(message);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyPhoneCode = async (code: string) => {
+    if (!cognitoConfig || authState.mode !== "jwt" || !authState.accessToken) {
+      setPhoneSetupError("ログイン情報を確認できませんでした。もう一度ログインしてください。");
+      return;
+    }
+
+    setIsLoading(true);
+    setPhoneSetupError(null);
+    try {
+      await verifyCognitoPhoneNumber(cognitoConfig, {
+        accessToken: authState.accessToken,
+        code,
+      });
+      await completeLogin(authState);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "電話番号の確認に失敗しました。";
+      setPhoneSetupError(message);
       throw error;
     } finally {
       setIsLoading(false);
@@ -656,8 +744,10 @@ export default function App() {
     setScreen("login");
   };
 
+  const shouldShowAuthenticatedChrome = isLoggedIn && screen !== "phone-setup";
+
   return (
-    <main className={screen === "session" ? "page-shell session-page" : screen === "login" ? "page-shell login-page" : "page-shell app-page"}>
+    <main className={screen === "session" ? "page-shell session-page" : screen === "login" || screen === "phone-setup" ? "page-shell login-page" : "page-shell app-page"}>
       <section className="hero-card">
         <p className="eyebrow">Interview Practice</p>
         <h1>AI面接コーチ</h1>
@@ -682,7 +772,7 @@ export default function App() {
           </section>
         ) : null}
 
-        {isLoggedIn ? (
+        {shouldShowAuthenticatedChrome ? (
           <div className="hero-toolbar">
             <div className="utility-actions">
               <button
@@ -745,6 +835,17 @@ export default function App() {
               isCognitoConfigured={Boolean(cognitoConfig)}
               isLoading={isLoading}
               errorMessage={loginError}
+            />
+          ) : null}
+          {screen === "phone-setup" ? (
+            <PhoneSetupScreen
+              onSendCode={handleSendPhoneCode}
+              onVerifyCode={handleVerifyPhoneCode}
+              onLogout={handleLogout}
+              initialCodeSent={isPhoneSetupCodeSent}
+              initialMessage={isPhoneSetupCodeSent ? "SMSで確認コードを送信しました。" : null}
+              isLoading={isLoading}
+              errorMessage={phoneSetupError}
             />
           ) : null}
           {screen === "home" ? (

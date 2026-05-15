@@ -149,6 +149,15 @@ type CheckoutSessionConfirmResponseEnvelope = {
   };
 };
 
+type PhoneNumberPrepareResponseEnvelope = {
+  data: {
+    phone_number: string;
+  };
+  meta: {
+    request_id: string;
+  };
+};
+
 
 export class ApiError extends Error {
   status: number;
@@ -214,6 +223,14 @@ export function createApiClient(options: ApiClientOptions) {
     },
     getAuthMe(authState: AuthState) {
       return request<AuthMeResponseEnvelope>("/api/auth/me", authState, { method: "GET" });
+    },
+    preparePhoneNumberUpdate(authState: AuthState, phoneNumber: string) {
+      return request<PhoneNumberPrepareResponseEnvelope>("/api/users/phone-number/prepare", authState, {
+        method: "POST",
+        body: JSON.stringify({
+          phone_number: phoneNumber,
+        }),
+      });
     },
     getCreditBalance(authState: AuthState) {
       return request<CreditBalanceResponseEnvelope>("/api/credits/balance", authState, { method: "GET" });

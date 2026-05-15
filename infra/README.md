@@ -109,7 +109,7 @@ npm run cognito:csv -- \
   --username-attribute email
 ```
 
-`--default-phone-number` を指定すると、`phone_number` がない移行ユーザーには Cognito 用に `+819012345678` のような E.164 形式へ変換して補完します。`--username-attribute email` で import CSV の `cognito:username` にはメールアドレスを入れます。`--required-attributes` で指定した属性が欠けているユーザー、または値が入っている既存 `phone_number` に重複がある場合は CSV 作成を止めます。
+`--default-phone-number` を指定すると、`phone_number` がない移行ユーザーには Cognito 用に `+819012345678` のような E.164 形式へ変換して補完します。この仮埋め番号は `phone_number_verified=FALSE` として出力し、パスワード再設定コードは確認済みメールへ送ります。パスワード再設定後、ユーザーが本物の電話番号を入力してSMS確認します。`--username-attribute email` で import CSV の `cognito:username` にはメールアドレスを入れます。`--required-attributes` で指定した属性が欠けているユーザー、または値が入っている既存 `phone_number` に重複がある場合は CSV 作成を止めます。
 
 ### 4. import job を作成して開始
 
@@ -152,6 +152,23 @@ VITE_COGNITO_CLIENT_ID=<new aimensetsu app client id>
 ### 注意点
 
 - CSV import されたユーザーは `RESET_REQUIRED` 状態になります。
+- `RESET_REQUIRED` ユーザーの確認コードは `ForgotPassword` で送信されます。送信には、import CSV 上で `email_verified` または `phone_number_verified` の少なくとも一方が `TRUE` である必要があります。
+- 仮埋め番号 `09012345678` / `+819012345678` はSMS送信先にしません。既に `phone_number_verified=true` でインポート済みの場合は、対象ユーザーの `phone_number_verified` を `false`、`email_verified` を `true` に修正してからパスワード再設定を案内してください。
+  ```bash
+  aws cognito-idp admin-update-user-attributes \
+    --user-pool-id <new aimensetsu user pool id> \
+    --username <user email> \
+    --user-attributes \
+      Name=email_verified,Value=true \
+      Name=phone_number_verified,Value=false
+  ```
+- 旧システム登録者に確認コードが届かない場合は、対象ユーザーの verified 属性を確認してください。
+  ```bash
+  aws cognito-idp admin-get-user \
+    --user-pool-id <new aimensetsu user pool id> \
+    --username <user email>
+  ```
+  `UserStatus` が `RESET_REQUIRED` でも、`email_verified` または `phone_number_verified` が `true` なら `ForgotPassword` で確認コードを送信できます。
 - Hosted UI を使う場合、初回ログイン時は「Forgot password?」導線でパスワードを再設定してもらう運用にしてください。
 - old 側にしかない custom attributes を移す場合は、新プールにも同じ custom attribute schema を追加してから CSV ヘッダーに含めてください。
 - import CSV には全ヘッダー列が必要ですが、値が不要な列は空欄で構いません。

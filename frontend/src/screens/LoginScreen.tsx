@@ -1,20 +1,37 @@
 import { useEffect, useState, type FormEvent } from "react";
 
+import type { CognitoCodeDeliveryDetails } from "../lib/auth/cognito";
+
 const PENDING_CONFIRMATION_EMAIL_KEY = "aimensetsu_pending_confirmation_email";
 
 type LoginScreenProps = {
   onDemoLogin: () => void;
   onPasswordLogin: (payload: { email: string; password: string }) => Promise<void>;
-  onSignUp: (payload: { email: string; password: string; phoneNumber: string; name?: string }) => Promise<void>;
+  onSignUp: (payload: { email: string; password: string; name?: string }) => Promise<CognitoCodeDeliveryDetails | undefined>;
   onConfirmSignUp: (payload: { email: string; code: string }) => Promise<void>;
-  onResendConfirmationCode: (payload: { email: string }) => Promise<void>;
-  onForgotPassword: (payload: { email: string }) => Promise<void>;
-  onConfirmForgotPassword: (payload: { email: string; code: string; newPassword: string }) => Promise<void>;
+  onResendConfirmationCode: (payload: { email: string }) => Promise<CognitoCodeDeliveryDetails | undefined>;
+  onForgotPassword: (payload: { email: string }) => Promise<CognitoCodeDeliveryDetails | undefined>;
+  onConfirmForgotPassword: (payload: { email: string; code: string; newPassword: string; phoneNumber: string }) => Promise<void>;
   authMode?: "demo" | "cognito";
   isCognitoConfigured?: boolean;
   isLoading?: boolean;
   errorMessage?: string | null;
 };
+
+function formatCodeDeliveryMessage(details?: CognitoCodeDeliveryDetails) {
+  const destination = details?.Destination;
+  if (details?.DeliveryMedium === "EMAIL") {
+    return destination
+      ? `確認コードをメール（${destination}）に送信しました。`
+      : "確認コードをメールに送信しました。";
+  }
+  if (details?.DeliveryMedium === "SMS") {
+    return destination
+      ? `確認コードをSMS（${destination}）に送信しました。`
+      : "確認コードをSMSに送信しました。";
+  }
+  return "確認コードを送信しました。届かない場合は、Cognitoのメール確認設定を確認してください。";
+}
 
 
 export function LoginScreen({
@@ -36,9 +53,9 @@ export function LoginScreen({
   );
   const [email, setEmail] = useState(storedConfirmationEmail);
   const [name, setName] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [resetPhoneNumber, setResetPhoneNumber] = useState("");
   const [confirmationCode, setConfirmationCode] = useState("");
   const [resendAvailableAt, setResendAvailableAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -57,7 +74,7 @@ export function LoginScreen({
   }, [now, resendAvailableAt]);
 
   useEffect(() => {
-    if (errorMessage?.includes("電話番号確認") && email) {
+    if (errorMessage?.includes("メール確認") && email) {
       window.localStorage.setItem(PENDING_CONFIRMATION_EMAIL_KEY, email);
       setMode("confirm");
     }
@@ -75,13 +92,13 @@ export function LoginScreen({
   const handleSignUpSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLocalMessage(null);
-    await onSignUp({ email, password, phoneNumber, name });
+    const deliveryDetails = await onSignUp({ email, password, name });
     window.localStorage.setItem(PENDING_CONFIRMATION_EMAIL_KEY, email);
     setMode("confirm");
     const nextAvailableAt = Date.now() + 60_000;
     setNow(Date.now());
     setResendAvailableAt(nextAvailableAt);
-    setLocalMessage("SMSで確認コードを送信しました。");
+    setLocalMessage(formatCodeDeliveryMessage(deliveryDetails));
   };
 
   const handleConfirmSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -100,38 +117,37 @@ export function LoginScreen({
       return;
     }
     setLocalMessage(null);
-    await onResendConfirmationCode({ email });
+    const deliveryDetails = await onResendConfirmationCode({ email });
     const nextAvailableAt = Date.now() + 60_000;
     setNow(Date.now());
     setResendAvailableAt(nextAvailableAt);
-    setLocalMessage("SMSで確認コードを再送しました。");
+    setLocalMessage(formatCodeDeliveryMessage(deliveryDetails));
   };
 
   const handleForgotPasswordSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLocalMessage(null);
-    await onForgotPassword({ email });
+    const deliveryDetails = await onForgotPassword({ email });
     setMode("reset-confirm");
     setPassword("");
     setConfirmationCode("");
-    setLocalMessage("確認コードを送信しました。");
+    setLocalMessage(formatCodeDeliveryMessage(deliveryDetails));
   };
 
   const handleConfirmForgotPasswordSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLocalMessage(null);
-    await onConfirmForgotPassword({ email, code: confirmationCode, newPassword });
-    setMode("login");
+    await onConfirmForgotPassword({ email, code: confirmationCode, newPassword, phoneNumber: resetPhoneNumber });
     setPassword("");
     setNewPassword("");
+    setResetPhoneNumber("");
     setConfirmationCode("");
-    setLocalMessage("パスワードを再設定しました。新しいパスワードでログインしてください。");
   };
 
   const title = mode === "signup"
     ? "新規登録"
     : mode === "confirm"
-      ? "電話番号確認"
+      ? "メール確認"
       : mode === "reset" || mode === "reset-confirm"
         ? "パスワード再設定"
         : "ログイン";
@@ -236,21 +252,6 @@ export function LoginScreen({
                 />
               </label>
               <label>
-                電話番号
-                <input
-                  type="tel"
-                  autoComplete="tel"
-                  inputMode="tel"
-                  pattern="0[0-9０-９ー− ()（）-]{9,13}"
-                  placeholder="090-1234-5678"
-                  title="国内の電話番号を入力してください。例: 090-1234-5678"
-                  value={phoneNumber}
-                  onChange={(event) => setPhoneNumber(event.target.value)}
-                  required
-                />
-              </label>
-              <p className="input-help">国内の電話番号を入力してください。例: 090-1234-5678</p>
-              <label>
                 パスワード
                 <input
                   type="password"
@@ -270,7 +271,7 @@ export function LoginScreen({
           {mode === "confirm" ? (
             <form className="auth-form" onSubmit={handleConfirmSubmit}>
               <label>
-                SMS確認コード
+                メール確認コード
                 <input
                   type="text"
                   inputMode="numeric"
@@ -342,6 +343,21 @@ export function LoginScreen({
                 />
               </label>
               <p className="input-help">8文字以上で、英大文字・英小文字・数字・記号を含めてください。</p>
+              <label>
+                新しい電話番号
+                <input
+                  type="tel"
+                  autoComplete="tel"
+                  inputMode="tel"
+                  pattern="0[0-9０-９ー− ()（）-]{9,13}"
+                  placeholder="090-1234-5678"
+                  title="国内の電話番号を入力してください。例: 090-1234-5678"
+                  value={resetPhoneNumber}
+                  onChange={(event) => setResetPhoneNumber(event.target.value)}
+                  required
+                />
+              </label>
+              <p className="input-help">国内の電話番号を入力してください。例: 090-1234-5678</p>
               <button className="primary-button" type="submit" disabled={isLoading || !isCognitoConfigured}>
                 {isLoading ? "再設定中" : "パスワードを再設定"}
               </button>

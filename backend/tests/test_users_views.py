@@ -88,3 +88,64 @@ class UsersViewsTestCase(TestCase):
             HTTP_X_DEMO_USER="demo_3",
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_prepare_phone_number_update_rejects_duplicate(self):
+        AppUser.objects.create(
+            user_id="demo_4",
+            name="Demo4",
+            phone_number="+818011112222",
+            auth_provider=AppUser.AuthProvider.DEMO,
+            role=AppUser.Role.USER,
+        )
+        AppUser.objects.create(
+            user_id="demo_5",
+            name="Demo5",
+            auth_provider=AppUser.AuthProvider.DEMO,
+            role=AppUser.Role.USER,
+        )
+
+        response = self.client.post(
+            "/api/users/phone-number/prepare",
+            data=json.dumps({"phone_number": "080-1111-2222"}),
+            content_type="application/json",
+            HTTP_X_DEMO_USER="demo_5",
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error"]["code"], "PHONE_NUMBER_ALREADY_EXISTS")
+
+    def test_prepare_phone_number_update_rejects_placeholder(self):
+        AppUser.objects.create(
+            user_id="demo_6",
+            name="Demo6",
+            auth_provider=AppUser.AuthProvider.DEMO,
+            role=AppUser.Role.USER,
+        )
+
+        response = self.client.post(
+            "/api/users/phone-number/prepare",
+            data=json.dumps({"phone_number": "09012345678"}),
+            content_type="application/json",
+            HTTP_X_DEMO_USER="demo_6",
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error"]["code"], "PHONE_NUMBER_UNAVAILABLE")
+
+    def test_prepare_phone_number_update_accepts_available_number(self):
+        AppUser.objects.create(
+            user_id="demo_7",
+            name="Demo7",
+            auth_provider=AppUser.AuthProvider.DEMO,
+            role=AppUser.Role.USER,
+        )
+
+        response = self.client.post(
+            "/api/users/phone-number/prepare",
+            data=json.dumps({"phone_number": "080-1111-2222"}),
+            content_type="application/json",
+            HTTP_X_DEMO_USER="demo_7",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"]["phone_number"], "+818011112222")

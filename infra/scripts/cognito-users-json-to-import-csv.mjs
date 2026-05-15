@@ -103,9 +103,12 @@ function normalizePhoneNumber(phoneNumber) {
 
 function applyDefaults(user, defaultPhoneNumber) {
   const attributes = attributesToObject(user.Attributes ?? user.UserAttributes);
+  if (attributes.email) {
+    attributes.email_verified = attributes.email_verified ?? "true";
+  }
   if (!attributes.phone_number && defaultPhoneNumber) {
     attributes.phone_number = defaultPhoneNumber;
-    attributes.phone_number_verified = attributes.phone_number_verified ?? "true";
+    attributes.phone_number_verified = "false";
   }
   return attributes;
 }
