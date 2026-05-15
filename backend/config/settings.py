@@ -1,6 +1,8 @@
 from pathlib import Path
 import os
 
+from .database import build_database_config
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -53,12 +55,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": os.getenv("DB_ENGINE", "django.db.backends.sqlite3"),
-        "NAME": os.getenv("DB_NAME", str(BASE_DIR / "db.sqlite3")),
-    }
-}
+DATABASES = {"default": build_database_config(BASE_DIR)}
 
 LANGUAGE_CODE = "ja-jp"
 TIME_ZONE = "Asia/Tokyo"

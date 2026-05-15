@@ -10,6 +10,30 @@ pip install -r requirements.txt
 python manage.py runserver 8000
 ```
 
+## 既存RDS MySQLへの配置
+
+RDSインスタンスは既存のものを使い、本システム用のDBだけを作成してマイグレーションします。
+
+```bash
+export DB_ENGINE=django.db.backends.mysql
+export DB_HOST=your-rds-endpoint.ap-northeast-1.rds.amazonaws.com
+export DB_PORT=3306
+export DB_NAME=voice_aimensetsu
+export DB_USER=aimensetsu_app
+export DB_PASSWORD=your-app-password
+
+# DB作成権限を別ユーザーにする場合だけ指定
+export DB_ADMIN_USER=admin_user
+export DB_ADMIN_PASSWORD=admin_password
+
+python manage.py create_mysql_database
+python manage.py migrate
+```
+
+アプリ用DBユーザーも作成・権限付与する場合は、管理ユーザーで `python manage.py create_mysql_database --grant-app-user` を実行します。
+
+RDSのSSL CAを検証する場合は `DB_SSL_CA=/path/to/rds-ca.pem` を指定します。SSLを使わない検証環境では `DB_SSL_DISABLED=true` を指定してください。
+
 ## 開発用フラグ
 
 - `ALLOW_INTERVIEW_WITHOUT_CREDITS=true`: クレジット残高が 0 分でも面接セッションを開始でき、終了時のクレジット消費も 0 分にします。

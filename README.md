@@ -54,6 +54,36 @@ COGNITO_USER_POOL_ID=ap-northeast-1_xxxxx
 COGNITO_APP_CLIENT_ID=your-app-client-id
 ```
 
+#### 既存RDS MySQLを使う場合
+
+既存のRDSインスタンス内に本システム用DBを作成し、Djangoのマイグレーションでテーブルを配置します。RDS自体はCDKで新規作成しません。
+
+```bash
+DB_ENGINE=django.db.backends.mysql
+DB_HOST=your-rds-endpoint.ap-northeast-1.rds.amazonaws.com
+DB_PORT=3306
+DB_NAME=voice_aimensetsu
+DB_USER=aimensetsu_app
+DB_PASSWORD=your-app-password
+```
+
+DB作成権限をアプリ用ユーザーに渡さない場合は、初期化時だけ管理ユーザーを指定します。
+
+```bash
+DB_ADMIN_USER=admin_user
+DB_ADMIN_PASSWORD=admin_password
+python manage.py create_mysql_database
+python manage.py migrate
+```
+
+アプリ用DBユーザーも初期化時に作成・権限付与したい場合は、管理ユーザーで以下を実行します。
+
+```bash
+python manage.py create_mysql_database --grant-app-user
+```
+
+RDSでSSL接続を必須にする場合は `DB_SSL_CA=/path/to/rds-ca.pem` を指定してください。検証環境などでSSLを無効化する場合のみ `DB_SSL_DISABLED=true` を指定します。
+
 ### フロントエンド
 
 ```bash
@@ -143,3 +173,5 @@ npm run e2e
 ### データ移行
 
 Cognitoのユーザーデータを現行システムから当システムに移行したい。
+
+Cognito ユーザープール移行は `infra` の CDK と補助スクリプトで実施します。既存プールから `list-users` した JSON を新プールの import CSV に変換し、CDK が出力する `CognitoUserImportLogsRoleArn` を使って user import job を作成します。詳細手順は [infra/README.md](/Users/n-syuichi/projects/aimensetsu/infra/README.md) を参照してください。

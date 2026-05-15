@@ -3,10 +3,13 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
+from io import StringIO
 from unittest.mock import patch
 
+from django.core.management import call_command
 from django.test import SimpleTestCase
 
+from config.database import build_database_config
 from config.env import load_backend_env
 
 
@@ -59,3 +62,82 @@ class ConfigEnvTestCase(SimpleTestCase):
                     load_backend_env()
                     self.assertEqual(os.environ["PRESERVED_KEY"], "shell_value")
                     self.assertEqual(os.environ["NEW_KEY"], "file_only")
+
+    def test_build_database_config_supports_mysql_env(self):
+        with patch.dict(
+            os.environ,
+            {
+                "DB_ENGINE": "django.db.backends.mysql",
+                "DB_NAME": "aimensetsu",
+                "DB_USER": "app_user",
+                "DB_PASSWORD": "password",
+                "DB_HOST": "database.example.internal",
+                "DB_PORT": "3306",
+                "DB_SSL_DISABLED": "true",
+            },
+            clear=True,
+        ):
+            config = build_database_config(Path("/tmp/backend"))
+
+        self.assertEqual(config["ENGINE"], "django.db.backends.mysql")
+        self.assertEqual(config["NAME"], "aimensetsu")
+        self.assertEqual(config["USER"], "app_user")
+        self.assertEqual(config["HOST"], "database.example.internal")
+        self.assertEqual(config["PORT"], "3306")
+        self.assertEqual(config["CONN_MAX_AGE"], 60)
+        self.assertEqual(config["OPTIONS"]["charset"], "utf8mb4")
+        self.assertEqual(config["OPTIONS"]["connect_timeout"], 10)
+        self.assertNotIn("ssl", config["OPTIONS"])
+
+    @patch("pymysql.connect")
+    def test_create_mysql_database_command(self, mocked_connect):
+        cursor = mocked_connect.return_value.cursor.return_value.__enter__.return_value
+        with patch.dict(
+            os.environ,
+            {
+                "DB_ENGINE": "django.db.backends.mysql",
+                "DB_NAME": "aimensetsu",
+                "DB_HOST": "database.example.internal",
+                "DB_ADMIN_USER": "admin",
+                "DB_ADMIN_PASSWORD": "password",
+                "DB_SSL_DISABLED": "true",
+            },
+            clear=True,
+        ):
+            output = StringIO()
+            call_command("create_mysql_database", stdout=output)
+
+        mocked_connect.assert_called_once()
+        cursor.execute.assert_called_once_with(
+            "CREATE DATABASE IF NOT EXISTS `aimensetsu` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+        )
+        self.assertIn("Database aimensetsu is ready.", output.getvalue())
+
+    @patch("pymysql.connect")
+    def test_create_mysql_database_command_can_grant_app_user(self, mocked_connect):
+        cursor = mocked_connect.return_value.cursor.return_value.__enter__.return_value
+        with patch.dict(
+            os.environ,
+            {
+                "DB_ENGINE": "django.db.backends.mysql",
+                "DB_NAME": "aimensetsu",
+                "DB_HOST": "database.example.internal",
+                "DB_ADMIN_USER": "admin",
+                "DB_ADMIN_PASSWORD": "password",
+                "DB_USER": "aimensetsu_app",
+                "DB_PASSWORD": "app_password",
+                "DB_SSL_DISABLED": "true",
+            },
+            clear=True,
+        ):
+            call_command("create_mysql_database", "--grant-app-user", stdout=StringIO())
+
+        statements = [call.args[0] for call in cursor.execute.call_args_list]
+        self.assertIn(
+            "CREATE USER IF NOT EXISTS 'aimensetsu_app'@'%' IDENTIFIED BY 'app_password'",
+            statements,
+        )
+        self.assertIn(
+            "GRANT ALL PRIVILEGES ON `aimensetsu`.* TO 'aimensetsu_app'@'%'",
+            statements,
+        )
