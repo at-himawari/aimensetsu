@@ -24,13 +24,13 @@ import {
   verifyCognitoPhoneNumber,
   type CognitoCodeDeliveryDetails,
 } from "./lib/auth/cognito";
-import { ApiError, createApiClient, type InterviewMessage, type InterviewSession, type Reflection, type ResumeFile } from "./lib/api/client";
+import { ApiError, createApiClient, getConfiguredApiBaseUrl, type InterviewMessage, type InterviewSession, type Reflection, type ResumeFile } from "./lib/api/client";
 import { useAuth, type AuthState } from "./state/auth";
 import { LoadingState } from "./ui/LoadingState";
 
 
 const apiClient = createApiClient({
-  baseUrl: import.meta.env.VITE_API_BASE_URL ?? "",
+  baseUrl: getConfiguredApiBaseUrl(),
 });
 const authMode = import.meta.env.MODE === "test" || import.meta.env.VITE_AUTH_MODE !== "cognito" ? "demo" : "cognito";
 const cognitoConfig = getCognitoConfig();

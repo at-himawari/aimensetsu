@@ -25,16 +25,6 @@ jobs:
       run:
         working-directory: ./frontend
 
-    env:
-      VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-      VITE_AUTH_MODE: ${{ vars.VITE_AUTH_MODE }}
-      VITE_COGNITO_DOMAIN: ${{ vars.VITE_COGNITO_DOMAIN }}
-      VITE_COGNITO_REGION: ${{ vars.VITE_COGNITO_REGION }}
-      VITE_COGNITO_CLIENT_ID: ${{ vars.VITE_COGNITO_CLIENT_ID }}
-      VITE_COGNITO_REDIRECT_URI: ${{ vars.VITE_COGNITO_REDIRECT_URI }}
-      VITE_COGNITO_LOGOUT_URI: ${{ vars.VITE_COGNITO_LOGOUT_URI }}
-      VITE_COGNITO_SCOPES: ${{ vars.VITE_COGNITO_SCOPES }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -70,9 +60,28 @@ jobs:
             echo "VITE_COGNITO_CLIENT_ID is not set in GitHub Actions variables."
             exit 1
           }
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_AUTH_MODE: ${{ vars.VITE_AUTH_MODE }}
+          VITE_COGNITO_REGION: ${{ vars.VITE_COGNITO_REGION }}
+          VITE_COGNITO_CLIENT_ID: ${{ vars.VITE_COGNITO_CLIENT_ID }}
 
       - name: Build
         run: npm run build
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_AUTH_MODE: ${{ vars.VITE_AUTH_MODE }}
+          VITE_COGNITO_DOMAIN: ${{ vars.VITE_COGNITO_DOMAIN }}
+          VITE_COGNITO_REGION: ${{ vars.VITE_COGNITO_REGION }}
+          VITE_COGNITO_CLIENT_ID: ${{ vars.VITE_COGNITO_CLIENT_ID }}
+          VITE_COGNITO_REDIRECT_URI: ${{ vars.VITE_COGNITO_REDIRECT_URI }}
+          VITE_COGNITO_LOGOUT_URI: ${{ vars.VITE_COGNITO_LOGOUT_URI }}
+          VITE_COGNITO_SCOPES: ${{ vars.VITE_COGNITO_SCOPES }}
+
+      - name: Check built API base URL
+        run: grep -R "$VITE_API_BASE_URL" dist/assets
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
 
       - name: Deploy to Cloudflare Workers
         run: npx --yes wrangler@4.91.0 deploy

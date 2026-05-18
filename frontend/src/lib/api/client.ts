@@ -30,6 +30,7 @@ type ApiClientOptions = {
 };
 
 const RESUME_UPLOAD_TIMEOUT_MS = 60000;
+export const API_BASE_URL_MISSING_MESSAGE = "API 接続先が未設定です。VITE_API_BASE_URL を設定して再デプロイしてください。";
 
 export type InterviewSession = {
   session_id: string;
@@ -172,7 +173,23 @@ export class ApiError extends Error {
 }
 
 
+export function getConfiguredApiBaseUrl() {
+  return (import.meta.env.VITE_API_BASE_URL ?? "").trim();
+}
+
+
+export function buildApiUrl(path: string, baseUrl = getConfiguredApiBaseUrl()) {
+  const normalizedBaseUrl = baseUrl.trim();
+  if (!normalizedBaseUrl && typeof window !== "undefined" && window.location.protocol === "https:") {
+    throw new ApiError(API_BASE_URL_MISSING_MESSAGE, 0, "API_BASE_URL_MISSING");
+  }
+  return `${normalizedBaseUrl}${path}`;
+}
+
+
 export function createApiClient(options: ApiClientOptions) {
+  const baseUrl = options.baseUrl.trim();
+
   async function request<T>(path: string, authState: AuthState, init?: RequestInit): Promise<T> {
     const fetchImpl = options.fetchImpl ?? fetch;
     const headers = new Headers(init?.headers ?? {});
@@ -188,7 +205,7 @@ export function createApiClient(options: ApiClientOptions) {
       headers.set("Authorization", `Bearer ${authState.accessToken}`);
     }
 
-    const response = await fetchImpl(`${options.baseUrl}${path}`, {
+    const response = await fetchImpl(buildApiUrl(path, baseUrl), {
       ...init,
       headers,
     });

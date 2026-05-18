@@ -149,3 +149,15 @@ class UsersViewsTestCase(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["phone_number"], "+818011112222")
+
+    def test_prepare_phone_number_update_allows_production_cors_preflight(self):
+        response = self.client.options(
+            "/api/users/phone-number/prepare",
+            HTTP_ORIGIN="https://aimensetsu.ct-himawari.com",
+            HTTP_ACCESS_CONTROL_REQUEST_METHOD="POST",
+            HTTP_ACCESS_CONTROL_REQUEST_HEADERS="authorization,content-type",
+        )
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response["Access-Control-Allow-Origin"], "https://aimensetsu.ct-himawari.com")
+        self.assertIn("Authorization", response["Access-Control-Allow-Headers"])

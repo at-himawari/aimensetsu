@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { buildApiUrl } from "../lib/api/client";
 import { useAuth } from "../state/auth";
 import { LoadingState } from "../ui/LoadingState";
 
@@ -304,7 +305,7 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
 
     const headers = authHeaders();
     headers.set("Content-Type", "application/json");
-    const savePromise = fetch(`/api/interview-sessions/${currentSessionId}/messages`, {
+    const savePromise = fetch(buildApiUrl(`/api/interview-sessions/${currentSessionId}/messages`), {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -325,7 +326,7 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
     const headers = authHeaders();
     headers.set("Content-Type", "application/json");
 
-    const createSession = (nextResumeId: string | null) => fetch("/api/interview-sessions", {
+    const createSession = (nextResumeId: string | null) => fetch(buildApiUrl("/api/interview-sessions"), {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -433,7 +434,7 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
 
       const headers = authHeaders();
       headers.set("Content-Type", "application/sdp");
-      const response = await fetch(`/api/interview-sessions/${nextSessionId}/realtime-call`, {
+      const response = await fetch(buildApiUrl(`/api/interview-sessions/${nextSessionId}/realtime-call`), {
         method: "POST",
         headers,
         body: offer.sdp ?? "",
@@ -488,11 +489,11 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
     if (currentSessionId) {
       await Promise.allSettled(pendingMessageSavesRef.current);
       const headers = authHeaders();
-      await fetch(`/api/interview-sessions/${currentSessionId}/complete`, {
+      await fetch(buildApiUrl(`/api/interview-sessions/${currentSessionId}/complete`), {
         method: "POST",
         headers,
       }).catch(() => undefined);
-      const reflectionResponse = await fetch(`/api/interview-sessions/${currentSessionId}/reflection`, {
+      const reflectionResponse = await fetch(buildApiUrl(`/api/interview-sessions/${currentSessionId}/reflection`), {
         method: "POST",
         headers,
       }).catch(() => undefined);
