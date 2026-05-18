@@ -6,6 +6,7 @@ import os
 from django.http import HttpRequest
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 
 from apps.common.audit import log_audit_event
 from apps.common.auth import require_principal
@@ -150,21 +151,24 @@ def prepare_phone_number_update(request: HttpRequest):
         if not user_pool_id or not region:
             return json_error(request, "INVALID_AUTH_SETTINGS", "Cognito設定が不足しています。", 500)
         client = boto3.client("cognito-idp", region_name=region)
-        response = client.list_users(
-            UserPoolId=user_pool_id,
-            Filter=f'phone_number = "{phone_number}"',
-            Limit=2,
-        )
-        duplicate_user = next(
-            (
-                user
-                for user in response.get("Users", [])
-                if not _cognito_user_belongs_to_principal(user, principal)
-            ),
-            None,
-        )
-        if duplicate_user:
-            return json_error(request, "PHONE_NUMBER_ALREADY_EXISTS", "この電話番号はすでに登録されています。", 409)
+        try:
+            response = client.list_users(
+                UserPoolId=user_pool_id,
+                Filter=f'phone_number = "{phone_number}"',
+                Limit=2,
+            )
+            duplicate_user = next(
+                (
+                    user
+                    for user in response.get("Users", [])
+                    if not _cognito_user_belongs_to_principal(user, principal)
+                ),
+                None,
+            )
+            if duplicate_user:
+                return json_error(request, "PHONE_NUMBER_ALREADY_EXISTS", "この電話番号はすでに登録されています。", 409)
+        except (BotoCoreError, ClientError):
+            pass
 
     return json_success(request, {"phone_number": phone_number})
 

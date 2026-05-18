@@ -6,10 +6,14 @@ from dataclasses import dataclass
 
 import jwt
 from jwt import PyJWKClient
+from django.db import IntegrityError
 from django.http import HttpRequest
 
 from apps.common.auth import AuthenticatedPrincipal, AuthenticationError
 from .models import AppUser
+
+
+PLACEHOLDER_PHONE_NUMBER = "+819012345678"
 
 
 @dataclass
@@ -142,17 +146,19 @@ class CognitoJwtAuthAdapter:
         email = payload.get("email")
         phone_number = payload.get("phone_number")
         role = AppUser.Role.ADMIN if "admin" in payload.get("cognito:groups", []) else AppUser.Role.USER
-        user, created = AppUser.objects.get_or_create(
-            user_id=subject,
-            defaults={
-                "name": payload.get("name") or email or subject,
-                "email": email,
-                "phone_number": phone_number,
-                "auth_provider": AppUser.AuthProvider.COGNITO,
-                "external_subject": subject,
-                "role": role,
-            },
-        )
+        defaults = {
+            "name": payload.get("name") or email or subject,
+            "email": email,
+            "phone_number": self._safe_phone_number(phone_number, subject),
+            "auth_provider": AppUser.AuthProvider.COGNITO,
+            "external_subject": subject,
+            "role": role,
+        }
+        try:
+            user, created = AppUser.objects.get_or_create(user_id=subject, defaults=defaults)
+        except IntegrityError:
+            defaults["phone_number"] = None
+            user, created = AppUser.objects.get_or_create(user_id=subject, defaults=defaults)
         if created:
             from apps.billing.services import grant_initial_free_credits
 
@@ -163,6 +169,13 @@ class CognitoJwtAuthAdapter:
             auth_provider=user.auth_provider,
             roles=[user.role],
         )
+
+    def _safe_phone_number(self, phone_number: str | None, subject: str) -> str | None:
+        if not phone_number or phone_number == PLACEHOLDER_PHONE_NUMBER:
+            return None
+        if AppUser.objects.filter(phone_number=phone_number).exclude(user_id=subject).exists():
+            return None
+        return phone_number
 
 
 def build_auth_adapter():

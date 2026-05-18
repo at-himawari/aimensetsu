@@ -77,6 +77,40 @@ class UsersAuthAndMiddlewareTestCase(TestCase):
         self.assertEqual(user.credit_balance.available_minutes, 15)
         self.assertEqual(CreditTransaction.objects.get(user=user).minutes_delta, 15)
 
+    def test_cognito_auth_adapter_ignores_duplicate_phone_number(self):
+        AppUser.objects.create(
+            user_id="existing_user",
+            name="Existing User",
+            phone_number="+819012345678",
+            auth_provider=AppUser.AuthProvider.COGNITO,
+            role=AppUser.Role.USER,
+        )
+        os.environ["AUTH_MODE"] = "cognito"
+        os.environ["COGNITO_APP_CLIENT_ID"] = "client"
+        os.environ["COGNITO_JWT_SECRET"] = "secret"
+        os.environ["COGNITO_ISSUER"] = "issuer"
+        token = jwt.encode(
+            {
+                "sub": "sub_duplicate_phone",
+                "email": "duplicate@example.com",
+                "name": "Duplicate Phone",
+                "phone_number": "+819012345678",
+                "token_use": "access",
+                "client_id": "client",
+                "exp": int(time.time()) + 3600,
+                "iss": "issuer",
+            },
+            "secret",
+            algorithm="HS256",
+        )
+
+        principal = CognitoJwtAuthAdapter(load_auth_settings()).authenticate(
+            self.factory.get("/", HTTP_AUTHORIZATION=f"Bearer {token}")
+        )
+
+        self.assertEqual(principal.user_id, "sub_duplicate_phone")
+        self.assertIsNone(AppUser.objects.get(user_id="sub_duplicate_phone").phone_number)
+
     def test_cognito_auth_adapter_rejects_missing_subject(self):
         os.environ["AUTH_MODE"] = "cognito"
         os.environ["COGNITO_APP_CLIENT_ID"] = "client"
