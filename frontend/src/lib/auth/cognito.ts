@@ -58,6 +58,10 @@ type ForgotPasswordResponse = {
   CodeDeliveryDetails?: CognitoCodeDeliveryDetails;
 };
 
+type UserAttributeVerificationCodeResponse = {
+  CodeDeliveryDetails?: CognitoCodeDeliveryDetails;
+};
+
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
 }
@@ -274,6 +278,10 @@ export async function updateCognitoPhoneNumber(config: CognitoConfig, payload: {
     UserAttributes: [
       { Name: "phone_number", Value: phoneNumber },
     ],
+  });
+  return callCognito<UserAttributeVerificationCodeResponse>(config, "GetUserAttributeVerificationCode", {
+    AccessToken: payload.accessToken,
+    AttributeName: "phone_number",
   });
 }
 

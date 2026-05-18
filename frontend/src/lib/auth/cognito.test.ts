@@ -245,10 +245,10 @@ describe("cognito auth helpers", () => {
       email: "user@example.com",
       phone_number_verified: "false",
     });
-    await updateCognitoPhoneNumber(config, {
+    await expect(updateCognitoPhoneNumber(config, {
       accessToken: "access-token",
       phoneNumber: "090-1234-5678",
-    });
+    })).resolves.toEqual({});
     await verifyCognitoPhoneNumber(config, {
       accessToken: "access-token",
       code: "123456",
@@ -265,6 +265,18 @@ describe("cognito auth helpers", () => {
         }),
         headers: expect.objectContaining({
           "X-Amz-Target": "AWSCognitoIdentityProviderService.UpdateUserAttributes",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://cognito-idp.ap-northeast-1.amazonaws.com/",
+      expect.objectContaining({
+        body: JSON.stringify({
+          AccessToken: "access-token",
+          AttributeName: "phone_number",
+        }),
+        headers: expect.objectContaining({
+          "X-Amz-Target": "AWSCognitoIdentityProviderService.GetUserAttributeVerificationCode",
         }),
       }),
     );

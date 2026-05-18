@@ -46,6 +46,9 @@ export class AimensetsuAppStack extends cdk.Stack {
       emailSubject: "Verify your new account",
       smsMessage: "AI面接コーチの確認コードは {####} です。",
     };
+    cfnUserPool.userAttributeUpdateSettings = {
+      attributesRequireVerificationBeforeUpdate: ["phone_number"],
+    };
     cfnUserPool.schema = [
       {
         attributeDataType: "String",
