@@ -35,6 +35,21 @@ const apiClient = createApiClient({
 const authMode = import.meta.env.MODE === "test" || import.meta.env.VITE_AUTH_MODE !== "cognito" ? "demo" : "cognito";
 const cognitoConfig = getCognitoConfig();
 
+export function isAuthenticatedForMode(authState: AuthState, mode: "demo" | "cognito") {
+  if (mode === "cognito") {
+    return authState.mode === "jwt" && Boolean(authState.accessToken);
+  }
+  return authState.mode === "demo"
+    ? Boolean(authState.demoUserId)
+    : authState.mode === "jwt"
+      ? Boolean(authState.accessToken)
+      : false;
+}
+
+function isAuthenticatedAuthState(authState: AuthState) {
+  return isAuthenticatedForMode(authState, authMode);
+}
+
 type HistoryItem = {
   id: string;
   title: string;
@@ -133,12 +148,7 @@ function mapResumeFile(resume: ResumeFile): ResumeItem {
 
 export default function App() {
   const { authState, loginDemo, setJwt, logout } = useAuth();
-  const isLoggedIn =
-    authState.mode === "demo"
-      ? Boolean(authState.demoUserId)
-      : authState.mode === "jwt"
-        ? Boolean(authState.accessToken)
-        : false;
+  const isLoggedIn = isAuthenticatedAuthState(authState);
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [phoneSetupError, setPhoneSetupError] = useState<string | null>(null);
@@ -162,6 +172,19 @@ export default function App() {
   const selectedHistory =
     historyItems.find((item) => item.id === selectedHistoryId) ?? historyItems[0] ?? null;
 
+  useEffect(() => {
+    if (authMode === "cognito" && authState.mode === "demo") {
+      logout();
+      return;
+    }
+
+    if (!isLoggedIn && screen !== "login") {
+      setIsMenuOpen(false);
+      setIsStartWithoutResumeDialogOpen(false);
+      setScreen("login");
+    }
+  }, [authState.mode, isLoggedIn, logout, screen]);
+
   const completeLogin = async (nextAuthState: AuthState) => {
     if (authMode === "cognito" && cognitoConfig && nextAuthState.mode === "jwt" && nextAuthState.accessToken) {
       const userAttributes = await getCognitoUser(cognitoConfig, nextAuthState.accessToken);
@@ -180,7 +203,7 @@ export default function App() {
   };
 
   const loadCreditBalance = async (nextAuthState: AuthState = authState) => {
-    if (nextAuthState.mode === "anonymous") {
+    if (!isAuthenticatedAuthState(nextAuthState)) {
       return null;
     }
 
@@ -259,7 +282,7 @@ export default function App() {
   }, [authState.mode]);
 
   useEffect(() => {
-    if (authState.mode === "anonymous") {
+    if (!isAuthenticatedAuthState(authState)) {
       return;
     }
 
@@ -300,7 +323,7 @@ export default function App() {
   }, [authState]);
 
   const loadHistoryDetail = async (historyId: string) => {
-    if (authState.mode === "anonymous") {
+    if (!isAuthenticatedAuthState(authState)) {
       return;
     }
 
@@ -325,7 +348,7 @@ export default function App() {
   };
 
   const loadHistory = async () => {
-    if (authState.mode === "anonymous") {
+    if (!isAuthenticatedAuthState(authState)) {
       return;
     }
 
@@ -350,7 +373,7 @@ export default function App() {
   };
 
   const loadResumes = async (nextAuthState: AuthState = authState) => {
-    if (nextAuthState.mode === "anonymous") {
+    if (!isAuthenticatedAuthState(nextAuthState)) {
       return;
     }
 
@@ -392,7 +415,7 @@ export default function App() {
       return;
     }
 
-    if (authState.mode !== "anonymous") {
+    if (isAuthenticatedAuthState(authState)) {
       try {
         await apiClient.deleteHistory(authState, selectedHistoryId);
       } catch (error) {
@@ -430,7 +453,7 @@ export default function App() {
   };
 
   const handleUploadResume = async (file: File) => {
-    if (authState.mode === "anonymous") {
+    if (!isAuthenticatedAuthState(authState)) {
       setResumeError("ログインするとアップロードできます。");
       return;
     }
@@ -455,7 +478,7 @@ export default function App() {
   };
 
   const handleDeleteResume = async (resumeId: string) => {
-    if (authState.mode !== "anonymous") {
+    if (isAuthenticatedAuthState(authState)) {
       try {
         await apiClient.deleteResume(authState, resumeId);
       } catch (error) {
@@ -475,7 +498,7 @@ export default function App() {
   };
 
   const handlePurchaseCredits = async () => {
-    if (authState.mode === "anonymous") {
+    if (!isAuthenticatedAuthState(authState)) {
       setBillingError("ログイン後に購入できます。");
       return;
     }

@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import App from "./App";
+import App, { isAuthenticatedForMode } from "./App";
 import { AuthProvider } from "./state/auth";
 
 const originalLocation = window.location;
@@ -667,5 +667,16 @@ describe("App", () => {
     await screen.findByRole("heading", { name: "ホーム" });
     await user.click(screen.getByRole("button", { name: "メニューを開く" }));
     expect(screen.getByRole("menuitem", { name: "ログアウト" })).toBeInTheDocument();
+  });
+
+  it("does not treat persisted demo auth as logged in for cognito production mode", () => {
+    expect(isAuthenticatedForMode(
+      { mode: "demo", demoUserId: "demo_frontend", accessToken: null },
+      "cognito",
+    )).toBe(false);
+    expect(isAuthenticatedForMode(
+      { mode: "jwt", demoUserId: null, accessToken: "access-token" },
+      "cognito",
+    )).toBe(true);
   });
 });
