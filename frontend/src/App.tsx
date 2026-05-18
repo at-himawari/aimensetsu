@@ -979,6 +979,9 @@ export default function App() {
           </div>
         ) : null}
       </section>
+      <footer className="app-footer" aria-label="Copyright">
+        ©︎ 2026 Himawari Project
+      </footer>
     </main>
   );
 }
