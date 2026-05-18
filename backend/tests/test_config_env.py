@@ -89,6 +89,26 @@ class ConfigEnvTestCase(SimpleTestCase):
         self.assertEqual(config["OPTIONS"]["connect_timeout"], 10)
         self.assertNotIn("ssl", config["OPTIONS"])
 
+    def test_build_database_config_falls_back_to_bundled_ssl_ca(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            backend_dir = Path(temp_dir)
+            (backend_dir / "global-bundle.pem").write_text("cert", encoding="utf-8")
+            with patch.dict(
+                os.environ,
+                {
+                    "DB_ENGINE": "django.db.backends.mysql",
+                    "DB_NAME": "aimensetsu",
+                    "DB_USER": "app_user",
+                    "DB_PASSWORD": "password",
+                    "DB_HOST": "database.example.internal",
+                    "DB_SSL_CA": "/Users/local/project/global-bundle.pem",
+                },
+                clear=True,
+            ):
+                config = build_database_config(backend_dir)
+
+        self.assertEqual(config["OPTIONS"]["ssl"]["ca"], str(backend_dir / "global-bundle.pem"))
+
     @patch("pymysql.connect")
     def test_create_mysql_database_command(self, mocked_connect):
         cursor = mocked_connect.return_value.cursor.return_value.__enter__.return_value

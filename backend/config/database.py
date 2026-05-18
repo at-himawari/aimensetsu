@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 
 def _optional_int(value: str | None) -> int | None:
@@ -45,10 +46,25 @@ def build_database_config(base_dir) -> dict:
             },
         }
     )
-    ssl_ca = os.getenv("DB_SSL_CA")
+    ssl_ca = _resolve_ssl_ca_path(os.getenv("DB_SSL_CA"), base_dir)
     if ssl_ca:
         config["OPTIONS"]["ssl"] = {"ca": ssl_ca}
     elif os.getenv("DB_SSL_DISABLED", "false").lower() != "true":
         config["OPTIONS"]["ssl"] = {}
 
     return config
+
+
+def _resolve_ssl_ca_path(ssl_ca: str | None, base_dir) -> str | None:
+    if not ssl_ca:
+        return None
+
+    configured_path = Path(ssl_ca)
+    if configured_path.is_file():
+        return str(configured_path)
+
+    bundled_path = Path(base_dir) / configured_path.name
+    if bundled_path.is_file():
+        return str(bundled_path)
+
+    return ssl_ca

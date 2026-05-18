@@ -59,7 +59,7 @@ export function PhoneSetupScreen({
               type="tel"
               autoComplete="tel"
               inputMode="tel"
-              pattern="0[0-9０-９ー− ()（）-]{9,13}"
+              pattern="0[0-9０-９ー− ()（）\\-]{9,13}"
               placeholder="090-1234-5678"
               title="国内の電話番号を入力してください。例: 090-1234-5678"
               value={phoneNumber}
