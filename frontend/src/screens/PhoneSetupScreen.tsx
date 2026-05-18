@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 type PhoneSetupScreenProps = {
   onSendCode: (phoneNumber: string) => Promise<void>;
   onVerifyCode: (code: string) => Promise<void>;
+  onEditPhoneNumber?: () => void;
   onLogout: () => void;
   initialCodeSent?: boolean;
   initialMessage?: string | null;
@@ -13,6 +14,7 @@ type PhoneSetupScreenProps = {
 export function PhoneSetupScreen({
   onSendCode,
   onVerifyCode,
+  onEditPhoneNumber,
   onLogout,
   initialCodeSent = false,
   initialMessage = null,
@@ -37,6 +39,13 @@ export function PhoneSetupScreen({
     event.preventDefault();
     setLocalMessage(null);
     await onVerifyCode(code);
+  };
+
+  const handleEditPhoneNumber = () => {
+    setIsCodeSent(false);
+    setCode("");
+    setLocalMessage(null);
+    onEditPhoneNumber?.();
   };
 
   return (
@@ -91,7 +100,7 @@ export function PhoneSetupScreen({
           <button className="primary-button" type="submit" disabled={isLoading}>
             {isLoading ? "確認中" : "利用を開始する"}
           </button>
-          <button className="utility-link-button" type="button" onClick={() => setIsCodeSent(false)}>
+          <button className="utility-link-button" type="button" onClick={handleEditPhoneNumber}>
             電話番号を修正する
           </button>
         </form>

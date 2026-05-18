@@ -864,6 +864,10 @@ export default function App() {
             <PhoneSetupScreen
               onSendCode={handleSendPhoneCode}
               onVerifyCode={handleVerifyPhoneCode}
+              onEditPhoneNumber={() => {
+                setIsPhoneSetupCodeSent(false);
+                setPhoneSetupError(null);
+              }}
               onLogout={handleLogout}
               initialCodeSent={isPhoneSetupCodeSent}
               initialMessage={isPhoneSetupCodeSent ? "SMSで確認コードを送信しました。" : null}

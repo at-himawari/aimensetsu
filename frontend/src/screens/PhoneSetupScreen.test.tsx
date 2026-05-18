@@ -32,10 +32,12 @@ describe("PhoneSetupScreen", () => {
   it("can start from the SMS verification step after password reset", async () => {
     const user = userEvent.setup();
     const onVerifyCode = vi.fn(async () => undefined);
+    const onEditPhoneNumber = vi.fn();
     render(
       <PhoneSetupScreen
         onSendCode={vi.fn(async () => undefined)}
         onVerifyCode={onVerifyCode}
+        onEditPhoneNumber={onEditPhoneNumber}
         onLogout={vi.fn()}
         initialCodeSent
         initialMessage="SMSで確認コードを送信しました。"
@@ -45,7 +47,14 @@ describe("PhoneSetupScreen", () => {
     expect(screen.getByText("SMSで確認コードを送信しました。")).toBeInTheDocument();
     expect(screen.getByLabelText("SMS確認コード")).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText("SMS確認コード"), "654321");
+    await user.click(screen.getByRole("button", { name: "電話番号を修正する" }));
+    expect(onEditPhoneNumber).toHaveBeenCalled();
+    expect(screen.getByLabelText("電話番号")).toBeInTheDocument();
+    expect(screen.queryByText("SMSで確認コードを送信しました。")).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("電話番号"), "090-1234-5678");
+    await user.click(screen.getByRole("button", { name: "確認コードを送信" }));
+    await user.type(await screen.findByLabelText("SMS確認コード"), "654321");
     await user.click(screen.getByRole("button", { name: "利用を開始する" }));
 
     expect(onVerifyCode).toHaveBeenCalledWith("654321");
