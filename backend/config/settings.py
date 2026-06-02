@@ -10,6 +10,9 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key")
 DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() == "true"
 ALLOWED_HOSTS = [host for host in os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",") if host]
 ALLOW_INTERVIEW_WITHOUT_CREDITS = os.getenv("ALLOW_INTERVIEW_WITHOUT_CREDITS", "false").lower() == "true"
+SYSTEM_MAINTENANCE_START_HOUR = int(os.getenv("SYSTEM_MAINTENANCE_START_HOUR", "1"))
+SYSTEM_MAINTENANCE_END_HOUR = int(os.getenv("SYSTEM_MAINTENANCE_END_HOUR", "6"))
+SYSTEM_MAINTENANCE_TIME_ZONE = os.getenv("SYSTEM_MAINTENANCE_TIME_ZONE", "Asia/Tokyo")
 
 INSTALLED_APPS = [
     "django.contrib.auth",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -185,6 +186,51 @@ class InterviewServicesTestCase(TestCase):
         self.assertEqual(completed.consumed_minutes, 0)
         self.assertEqual(balance.available_minutes, 30)
         self.assertEqual(CreditTransaction.objects.count(), 1)
+
+    @override_settings(
+        SYSTEM_MAINTENANCE_START_HOUR=1,
+        SYSTEM_MAINTENANCE_END_HOUR=6,
+        SYSTEM_MAINTENANCE_TIME_ZONE="Asia/Tokyo",
+    )
+    @patch("apps.interviews.services.timezone.now")
+    def test_complete_session_caps_consumption_at_maintenance_start(self, mocked_now):
+        tokyo = ZoneInfo("Asia/Tokyo")
+        session = InterviewSession.objects.create(
+            session_id="ses_maintenance_cap",
+            user=self.user,
+            status=InterviewSession.Status.ACTIVE,
+            mode="general",
+            started_at=timezone.datetime(2026, 6, 2, 0, 30, tzinfo=tokyo),
+        )
+        mocked_now.return_value = timezone.datetime(2026, 6, 2, 2, 0, tzinfo=tokyo)
+
+        completed, balance = complete_session(session)
+
+        self.assertEqual(completed.consumed_minutes, 30)
+        self.assertEqual(balance.available_minutes, 0)
+        self.assertEqual(CreditTransaction.objects.latest("created_at").minutes_delta, -30)
+
+    @override_settings(
+        SYSTEM_MAINTENANCE_START_HOUR=1,
+        SYSTEM_MAINTENANCE_END_HOUR=6,
+        SYSTEM_MAINTENANCE_TIME_ZONE="Asia/Tokyo",
+    )
+    @patch("apps.interviews.services.timezone.now")
+    def test_complete_session_consumes_zero_if_started_during_maintenance(self, mocked_now):
+        tokyo = ZoneInfo("Asia/Tokyo")
+        session = InterviewSession.objects.create(
+            session_id="ses_maintenance_started",
+            user=self.user,
+            status=InterviewSession.Status.ACTIVE,
+            mode="general",
+            started_at=timezone.datetime(2026, 6, 2, 1, 30, tzinfo=tokyo),
+        )
+        mocked_now.return_value = timezone.datetime(2026, 6, 2, 2, 0, tzinfo=tokyo)
+
+        completed, balance = complete_session(session)
+
+        self.assertEqual(completed.consumed_minutes, 0)
+        self.assertEqual(balance.available_minutes, 30)
 
     @override_settings(ALLOW_INTERVIEW_WITHOUT_CREDITS=True)
     def test_credit_bypass_allows_zero_balance_and_skips_consumption(self):

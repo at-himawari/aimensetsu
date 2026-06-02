@@ -38,6 +38,19 @@ function installDefaultFetchMock() {
         });
       }
 
+      if (path === "/api/system/maintenance") {
+        return jsonResponse({
+          data: {
+            is_maintenance: false,
+            message: "午前1時から午前6時までは、システムメンテナンスのため利用できません。",
+            starts_at_hour: 1,
+            ends_at_hour: 6,
+            timezone: "Asia/Tokyo",
+          },
+          meta: { request_id: "req_maintenance" },
+        });
+      }
+
       if (path === "/api/resumes" && method === "GET") {
         return jsonResponse({
           data: [

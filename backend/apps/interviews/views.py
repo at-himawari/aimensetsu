@@ -8,6 +8,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 
 from apps.common.audit import log_audit_event
 from apps.common.auth import require_principal
+from apps.common.maintenance import is_system_maintenance
 from apps.common.responses import json_error, json_success
 from apps.integrations.ai import AIServiceError, OpenAIRealtimeService
 from apps.resumes.models import ResumeFile
@@ -63,6 +64,13 @@ def interview_sessions(request: HttpRequest):
     job_role = payload.get("job_role")
     if not mode:
         return json_error(request, "INVALID_REQUEST", "mode は必須です。", 400)
+    if is_system_maintenance():
+        return json_error(
+            request,
+            "SYSTEM_MAINTENANCE",
+            "午前1時から午前6時までは、システムメンテナンスのため面接を開始できません。",
+            503,
+        )
 
     try:
         balance = ensure_sufficient_credits(user)

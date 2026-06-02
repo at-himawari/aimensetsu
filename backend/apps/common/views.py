@@ -5,6 +5,7 @@ from django.views.decorators.http import require_GET
 
 from apps.common.auth import require_principal, require_role
 from apps.billing.models import AuditLog
+from .maintenance import maintenance_status
 from .responses import json_success
 
 
@@ -44,3 +45,8 @@ def audit_logs(request: HttpRequest):
         for log in logs
     ]
     return json_success(request, data)
+
+
+@require_GET
+def system_maintenance(request: HttpRequest):
+    return json_success(request, maintenance_status())

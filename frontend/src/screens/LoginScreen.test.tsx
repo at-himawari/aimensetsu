@@ -91,6 +91,14 @@ describe("LoginScreen", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("メールアドレスまたはパスワードが間違っています。");
   });
 
+  it("shows a maintenance notice on the login form", () => {
+    renderLoginScreen({
+      maintenanceMessage: "午前1時から午前6時までは、システムメンテナンスのため利用できません。",
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent("システムメンテナンス");
+  });
+
   it("moves migrated users to password reset when Cognito requires it", async () => {
     const user = userEvent.setup();
     const view = renderLoginScreen();

@@ -5,6 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.billing.models import CreditBalance, CreditTransaction
+from apps.common.maintenance import is_system_maintenance, next_maintenance_start
 from apps.integrations.ai import InterviewAIService
 from apps.users.models import AppUser
 from .models import InterviewMessage, InterviewSession, Reflection
@@ -154,7 +155,12 @@ def complete_session(session: InterviewSession) -> tuple[InterviewSession, Credi
 
     balance = get_or_create_credit_balance(session.user)
     end_time = timezone.now()
-    consumed_minutes = max(1, int((end_time - session.started_at).total_seconds() // 60))
+    if is_system_maintenance(session.started_at):
+        billable_seconds = 0
+    else:
+        billable_end_time = min(end_time, next_maintenance_start(session.started_at))
+        billable_seconds = max(0, int((billable_end_time - session.started_at).total_seconds()))
+    consumed_minutes = max(1, billable_seconds // 60) if billable_seconds > 0 else 0
 
     if session.used_fallback or allows_interview_without_credits():
         consumed_minutes = 0

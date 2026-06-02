@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
-from django.test import Client, RequestFactory, TestCase
+from django.test import Client, RequestFactory, TestCase, override_settings
+from django.utils import timezone
 
 from apps.billing.models import AuditLog
 from apps.common.audit import log_audit_event
@@ -82,3 +85,20 @@ class AdminAndCommonTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
         self.assertEqual(len(data["data"]), 1)
+
+    @override_settings(
+        SYSTEM_MAINTENANCE_START_HOUR=1,
+        SYSTEM_MAINTENANCE_END_HOUR=6,
+        SYSTEM_MAINTENANCE_TIME_ZONE="Asia/Tokyo",
+    )
+    @patch("apps.common.maintenance.timezone.now")
+    def test_system_maintenance_status_is_public(self, mocked_now):
+        mocked_now.return_value = timezone.datetime(2026, 6, 2, 2, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+        response = self.client.get("/api/system/maintenance")
+
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertTrue(data["data"]["is_maintenance"])
+        self.assertEqual(data["data"]["starts_at_hour"], 1)
+        self.assertEqual(data["data"]["ends_at_hour"], 6)

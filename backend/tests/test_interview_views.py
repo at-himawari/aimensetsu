@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
 from apps.billing.models import CreditBalance
@@ -41,6 +42,26 @@ class InterviewViewsTestCase(TestCase):
             HTTP_X_DEMO_USER=self.user.user_id,
         )
         self.assertEqual(complete.status_code, 200)
+
+    @override_settings(
+        SYSTEM_MAINTENANCE_START_HOUR=1,
+        SYSTEM_MAINTENANCE_END_HOUR=6,
+        SYSTEM_MAINTENANCE_TIME_ZONE="Asia/Tokyo",
+    )
+    @patch("apps.common.maintenance.timezone.now")
+    def test_create_session_rejects_during_system_maintenance(self, mocked_now):
+        mocked_now.return_value = timezone.datetime(2026, 6, 2, 1, 30, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+        response = self.client.post(
+            "/api/interview-sessions",
+            data=json.dumps({"mode": "general"}),
+            content_type="application/json",
+            HTTP_X_DEMO_USER=self.user.user_id,
+        )
+
+        self.assertEqual(response.status_code, 503)
+        data = json.loads(response.content)
+        self.assertEqual(data["error"]["code"], "SYSTEM_MAINTENANCE")
 
     @patch("apps.integrations.ai.AzureOpenAIService.generate_reply")
     def test_messages_and_reflection_flow(self, mocked_generate_reply):
