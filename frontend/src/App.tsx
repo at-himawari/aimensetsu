@@ -25,7 +25,6 @@ import {
   type CognitoCodeDeliveryDetails,
 } from "./lib/auth/cognito";
 import { ApiError, createApiClient, getConfiguredApiBaseUrl, type InterviewMessage, type InterviewSession, type Reflection, type ResumeFile } from "./lib/api/client";
-import { getCurrentMaintenanceStatus, type MaintenanceStatus } from "./lib/maintenance";
 import { useAuth, type AuthState } from "./state/auth";
 import { LoadingState } from "./ui/LoadingState";
 
@@ -169,36 +168,9 @@ export default function App() {
   const [selectedHistoryId, setSelectedHistoryId] = useState<string>(initialHistoryItems[0].id);
   const [latestReflection, setLatestReflection] = useState<HistoryItem["reflection"] | null>(null);
   const [isStartWithoutResumeDialogOpen, setIsStartWithoutResumeDialogOpen] = useState(false);
-  const [maintenanceStatus, setMaintenanceStatus] = useState<MaintenanceStatus>(getCurrentMaintenanceStatus());
 
   const selectedHistory =
     historyItems.find((item) => item.id === selectedHistoryId) ?? historyItems[0] ?? null;
-
-  useEffect(() => {
-    let isActive = true;
-
-    const refreshMaintenanceStatus = async () => {
-      setMaintenanceStatus(getCurrentMaintenanceStatus());
-      try {
-        const response = await apiClient.getSystemMaintenanceStatus();
-        if (isActive) {
-          setMaintenanceStatus(response.data);
-        }
-      } catch {
-        // API が応答しない場合も、ログイン画面ではブラウザ時刻の判定を表示します。
-      }
-    };
-
-    void refreshMaintenanceStatus();
-    const timer = window.setInterval(() => {
-      void refreshMaintenanceStatus();
-    }, 60_000);
-
-    return () => {
-      isActive = false;
-      window.clearInterval(timer);
-    };
-  }, []);
 
   useEffect(() => {
     if (authMode === "cognito" && authState.mode === "demo") {
@@ -886,7 +858,6 @@ export default function App() {
               isCognitoConfigured={Boolean(cognitoConfig)}
               isLoading={isLoading}
               errorMessage={loginError}
-              maintenanceMessage={maintenanceStatus.is_maintenance ? maintenanceStatus.message : null}
             />
           ) : null}
           {screen === "phone-setup" ? (

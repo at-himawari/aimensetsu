@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
 import { buildApiUrl } from "../lib/api/client";
-import { getNextMaintenanceAutoStopAt } from "../lib/maintenance";
 import { useAuth } from "../state/auth";
 import { LoadingState } from "../ui/LoadingState";
 
@@ -116,24 +115,6 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (!sessionId) {
-      return;
-    }
-
-    const autoStopAt = getNextMaintenanceAutoStopAt();
-    const delayMs = autoStopAt.getTime() - Date.now();
-    if (delayMs <= 0) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      setErrorMessage("システムメンテナンス開始のため、面接を自動終了します。");
-      void handleFinish();
-    }, delayMs);
-    return () => window.clearTimeout(timer);
-  }, [sessionId]);
 
   const upsertConversationLog = (
     key: string,

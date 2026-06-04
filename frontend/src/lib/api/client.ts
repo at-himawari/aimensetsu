@@ -159,19 +159,6 @@ type PhoneNumberPrepareResponseEnvelope = {
   };
 };
 
-type MaintenanceStatusResponseEnvelope = {
-  data: {
-    is_maintenance: boolean;
-    message: string;
-    starts_at_hour: number;
-    ends_at_hour: number;
-    timezone: string;
-  };
-  meta: {
-    request_id: string;
-  };
-};
-
 
 export class ApiError extends Error {
   status: number;
@@ -253,13 +240,6 @@ export function createApiClient(options: ApiClientOptions) {
     },
     getAuthMe(authState: AuthState) {
       return request<AuthMeResponseEnvelope>("/api/auth/me", authState, { method: "GET" });
-    },
-    getSystemMaintenanceStatus() {
-      return request<MaintenanceStatusResponseEnvelope>(
-        "/api/system/maintenance",
-        { mode: "anonymous", demoUserId: null, accessToken: null },
-        { method: "GET" },
-      );
     },
     preparePhoneNumberUpdate(authState: AuthState, phoneNumber: string) {
       return request<PhoneNumberPrepareResponseEnvelope>("/api/users/phone-number/prepare", authState, {

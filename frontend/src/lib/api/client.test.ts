@@ -84,34 +84,6 @@ describe("api client", () => {
     } satisfies Partial<ApiError>);
   });
 
-  it("gets system maintenance status without auth headers", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        data: {
-          is_maintenance: true,
-          message: "maintenance",
-          starts_at_hour: 1,
-          ends_at_hour: 6,
-          timezone: "Asia/Tokyo",
-        },
-        meta: { request_id: "req_maintenance" },
-      }),
-    });
-    const client = createApiClient({ baseUrl: "", fetchImpl: fetchMock as typeof fetch });
-
-    const response = await client.getSystemMaintenanceStatus();
-
-    expect(response.data.is_maintenance).toBe(true);
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/system/maintenance",
-      expect.objectContaining({ method: "GET" }),
-    );
-    const headers = fetchMock.mock.calls[0][1].headers as Headers;
-    expect(headers.get("Authorization")).toBeNull();
-    expect(headers.get("X-Demo-User")).toBeNull();
-  });
-
   it("prepares a phone number update", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

@@ -16,7 +16,6 @@ type LoginScreenProps = {
   isCognitoConfigured?: boolean;
   isLoading?: boolean;
   errorMessage?: string | null;
-  maintenanceMessage?: string | null;
 };
 
 function formatCodeDeliveryMessage(details?: CognitoCodeDeliveryDetails) {
@@ -47,7 +46,6 @@ export function LoginScreen({
   isCognitoConfigured = false,
   isLoading = false,
   errorMessage = null,
-  maintenanceMessage = null,
 }: LoginScreenProps) {
   const storedConfirmationEmail = window.localStorage.getItem(PENDING_CONFIRMATION_EMAIL_KEY) ?? "";
   const [mode, setMode] = useState<"login" | "signup" | "confirm" | "reset" | "reset-confirm">(
@@ -166,11 +164,6 @@ export function LoginScreen({
       {errorMessage ? (
         <p className="inline-error" role="alert" aria-live="assertive">
           {errorMessage}
-        </p>
-      ) : null}
-      {maintenanceMessage ? (
-        <p className="maintenance-notice" role="status" aria-live="polite">
-          {maintenanceMessage}
         </p>
       ) : null}
       {localMessage ? <p className="inline-success">{localMessage}</p> : null}
