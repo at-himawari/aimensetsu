@@ -92,7 +92,7 @@ class ConfigEnvTestCase(SimpleTestCase):
     def test_build_database_config_falls_back_to_bundled_ssl_ca(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             backend_dir = Path(temp_dir)
-            (backend_dir / "global-bundle.pem").write_text("cert", encoding="utf-8")
+            (backend_dir / "ca.pem").write_text("cert", encoding="utf-8")
             with patch.dict(
                 os.environ,
                 {
@@ -101,13 +101,13 @@ class ConfigEnvTestCase(SimpleTestCase):
                     "DB_USER": "app_user",
                     "DB_PASSWORD": "password",
                     "DB_HOST": "database.example.internal",
-                    "DB_SSL_CA": "/Users/local/project/global-bundle.pem",
+                    "DB_SSL_CA": "/Users/local/project/ca.pem",
                 },
                 clear=True,
             ):
                 config = build_database_config(backend_dir)
 
-        self.assertEqual(config["OPTIONS"]["ssl"]["ca"], str(backend_dir / "global-bundle.pem"))
+        self.assertEqual(config["OPTIONS"]["ssl"]["ca"], str(backend_dir / "ca.pem"))
 
     @patch("pymysql.connect")
     def test_create_mysql_database_command(self, mocked_connect):
