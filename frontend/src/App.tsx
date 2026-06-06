@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { BillingScreen } from "./screens/BillingScreen";
 import { HistoryListScreen } from "./screens/HistoryListScreen";
@@ -24,6 +24,7 @@ import {
   verifyCognitoPhoneNumber,
   type CognitoCodeDeliveryDetails,
 } from "./lib/auth/cognito";
+import { initializeAnalytics, trackEvent, trackScreenView } from "./lib/analytics/ga4";
 import { ApiError, createApiClient, getConfiguredApiBaseUrl, type InterviewMessage, type InterviewSession, type Reflection, type ResumeFile } from "./lib/api/client";
 import { useAuth, type AuthState } from "./state/auth";
 import { LoadingState } from "./ui/LoadingState";
@@ -168,9 +169,22 @@ export default function App() {
   const [selectedHistoryId, setSelectedHistoryId] = useState<string>(initialHistoryItems[0].id);
   const [latestReflection, setLatestReflection] = useState<HistoryItem["reflection"] | null>(null);
   const [isStartWithoutResumeDialogOpen, setIsStartWithoutResumeDialogOpen] = useState(false);
+  const lastTrackedScreenRef = useRef<ScreenKey | null>(null);
 
   const selectedHistory =
     historyItems.find((item) => item.id === selectedHistoryId) ?? historyItems[0] ?? null;
+
+  useEffect(() => {
+    initializeAnalytics();
+  }, []);
+
+  useEffect(() => {
+    if (lastTrackedScreenRef.current === screen) {
+      return;
+    }
+    lastTrackedScreenRef.current = screen;
+    trackScreenView(screen);
+  }, [screen]);
 
   useEffect(() => {
     if (authMode === "cognito" && authState.mode === "demo") {
@@ -261,6 +275,7 @@ export default function App() {
         };
         setJwt(token);
         window.history.replaceState({}, "", window.location.pathname);
+        trackEvent("login", { method: "cognito_hosted_ui" });
         await completeLogin(nextAuthState);
       })
       .catch((error) => {
@@ -300,6 +315,25 @@ export default function App() {
           return;
         }
         const confirmedMinutes = await confirmCheckoutIfNeeded(authState, checkoutSessionId);
+        if (confirmedMinutes !== null && checkoutSessionId) {
+          const storageKey = `ga4_purchase_${checkoutSessionId}`;
+          if (window.sessionStorage.getItem(storageKey) !== "1") {
+            trackEvent("purchase", {
+              transaction_id: checkoutSessionId,
+              value: 300,
+              currency: "JPY",
+              items: [
+                {
+                  item_id: "minutes_30",
+                  item_name: "30分追加パック",
+                  price: 300,
+                  quantity: 1,
+                },
+              ],
+            });
+            window.sessionStorage.setItem(storageKey, "1");
+          }
+        }
         const availableMinutes = confirmedMinutes ?? await loadCreditBalance(authState);
         if (availableMinutes !== null && availableMinutes > 0) {
           return;
@@ -407,6 +441,10 @@ export default function App() {
     setSelectedHistoryId(historyId);
     setScreen("history");
     setIsMenuOpen(false);
+    trackEvent("select_content", {
+      content_type: "history",
+      item_id: historyId,
+    });
     void loadHistoryDetail(historyId);
   };
 
@@ -436,6 +474,9 @@ export default function App() {
     });
     setHistoryError(null);
     setScreen("history");
+    trackEvent("delete_history", {
+      history_count_after_delete: Math.max(historyItems.length - 1, 0),
+    });
   };
 
   const navigateTo = (nextScreen: ScreenKey) => {
@@ -465,6 +506,12 @@ export default function App() {
       const nextResume = mapResumeFile(response.data);
       setResumes((currentResumes) => [nextResume, ...currentResumes.filter((resume) => resume.id !== nextResume.id)]);
       setSelectedResumeId(nextResume.id);
+      trackEvent("resume_upload", {
+        file_extension: "pdf",
+        file_size_bytes: file.size,
+        resume_count_after_upload: resumes.length + 1,
+        has_extracted_text: nextResume.hasExtractedText ?? false,
+      });
     } catch (error) {
       const message = error instanceof ApiError
         ? error.message
@@ -495,6 +542,9 @@ export default function App() {
       }
       return nextResumes;
     });
+    trackEvent("resume_delete", {
+      resume_count_after_delete: Math.max(resumes.length - 1, 0),
+    });
   };
 
   const handlePurchaseCredits = async () => {
@@ -506,6 +556,18 @@ export default function App() {
     setIsBillingLoading(true);
     setBillingError(null);
     try {
+      trackEvent("begin_checkout", {
+        currency: "JPY",
+        value: 300,
+        items: [
+          {
+            item_id: "minutes_30",
+            item_name: "30分追加パック",
+            price: 300,
+            quantity: 1,
+          },
+        ],
+      });
       const origin = window.location.origin;
       const response = await apiClient.createCheckoutSession(authState, {
         plan_code: "minutes_30",
@@ -527,10 +589,18 @@ export default function App() {
       setSelectedResumeId(null);
       setIsStartWithoutResumeDialogOpen(true);
       setIsMenuOpen(false);
+      trackEvent("start_interview_prompt_without_resume", {
+        credit_balance_minutes: creditBalanceMinutes,
+      });
       return;
     }
     setScreen("session");
     setIsMenuOpen(false);
+    trackEvent("start_interview", {
+      source: screen,
+      has_resume: true,
+      credit_balance_minutes: creditBalanceMinutes,
+    });
   };
 
   const handleStartPracticeWithoutResume = () => {
@@ -538,6 +608,11 @@ export default function App() {
     setIsStartWithoutResumeDialogOpen(false);
     setScreen("session");
     setIsMenuOpen(false);
+    trackEvent("start_interview", {
+      source: "without_resume_dialog",
+      has_resume: false,
+      credit_balance_minutes: creditBalanceMinutes,
+    });
   };
 
   const handleAddResumeFromStartDialog = () => {
@@ -556,6 +631,7 @@ export default function App() {
         accessToken: null,
       };
       loginDemo(response.data.access_token, response.data.user.name);
+      trackEvent("login", { method: "demo" });
       await completeLogin(nextAuthState);
     } catch (error) {
       const message = error instanceof ApiError ? error.message : "ログインに失敗しました。";
@@ -585,6 +661,7 @@ export default function App() {
         accessToken: token,
       };
       setJwt(token);
+      trackEvent("login", { method: "cognito_password" });
       await completeLogin(nextAuthState);
     } catch (error) {
       const message = error instanceof Error ? error.message : "ログインに失敗しました。";
@@ -604,6 +681,7 @@ export default function App() {
     setLoginError(null);
     try {
       const response = await signUpWithCognito(cognitoConfig, payload);
+      trackEvent("sign_up", { method: "cognito_password" });
       return response.CodeDeliveryDetails;
     } catch (error) {
       const message = error instanceof Error ? error.message : "新規登録に失敗しました。";
@@ -705,6 +783,7 @@ export default function App() {
       setIsPhoneSetupCodeSent(true);
       setPhoneSetupError(null);
       setScreen("phone-setup");
+      trackEvent("phone_verification_code_sent", { source: "password_reset" });
     } catch (error) {
       const message = error instanceof Error ? error.message : "パスワードの再設定に失敗しました。";
       setLoginError(message);
@@ -729,6 +808,7 @@ export default function App() {
         phoneNumber,
       });
       setIsPhoneSetupCodeSent(true);
+      trackEvent("phone_verification_code_sent", { source: "phone_setup" });
     } catch (error) {
       const message = error instanceof Error ? error.message : "確認コードの送信に失敗しました。";
       setPhoneSetupError(message);
@@ -751,6 +831,7 @@ export default function App() {
         accessToken: authState.accessToken,
         code,
       });
+      trackEvent("phone_verified");
       await completeLogin(authState);
     } catch (error) {
       const message = error instanceof Error ? error.message : "電話番号の確認に失敗しました。";
@@ -765,6 +846,7 @@ export default function App() {
     logout();
     setIsMenuOpen(false);
     setScreen("login");
+    trackEvent("logout");
   };
 
   const shouldShowAuthenticatedChrome = isLoggedIn && screen !== "phone-setup";
@@ -905,6 +987,10 @@ export default function App() {
               resumeId={resumes.some((resume) => resume.id === selectedResumeId) ? selectedResumeId : null}
               resumeFileName={resumes.find((resume) => resume.id === selectedResumeId)?.fileName ?? null}
               onFinish={(reflection) => {
+                trackEvent("finish_interview", {
+                  has_resume: Boolean(selectedResumeId),
+                  has_reflection: Boolean(reflection),
+                });
                 setLatestReflection(
                   reflection
                     ? {

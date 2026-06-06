@@ -106,6 +106,8 @@ VITE_COGNITO_REDIRECT_URI=http://localhost:5173
 VITE_COGNITO_LOGOUT_URI=http://localhost:5173
 ```
 
+GA4 は `frontend/index.html` の既存タグを使います。現在の計測対象は、仮想ページビュー（ログイン、ホーム、職務経歴書、面接練習、履歴、課金など）と、主要イベント（ログイン、新規登録、面接開始/終了、職務経歴書アップロード/削除、履歴表示/削除、Checkout開始、購入反映）です。
+
 #### フロントエンド CD
 
 GitHub Actions の `Frontend CD` workflow が、`main` ブランチへの frontend 変更を Cloudflare Workers にデプロイします。

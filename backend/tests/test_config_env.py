@@ -109,6 +109,26 @@ class ConfigEnvTestCase(SimpleTestCase):
 
         self.assertEqual(config["OPTIONS"]["ssl"]["ca"], str(backend_dir / "ca.pem"))
 
+    def test_build_database_config_can_disable_ssl_hostname_check(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            backend_dir = Path(temp_dir)
+            (backend_dir / "ca.pem").write_text("cert", encoding="utf-8")
+            with patch.dict(
+                os.environ,
+                {
+                    "DB_ENGINE": "django.db.backends.mysql",
+                    "DB_NAME": "aimensetsu",
+                    "DB_HOST": "8.229.190.1",
+                    "DB_SSL_CA": "/app/ca.pem",
+                    "DB_SSL_CHECK_HOSTNAME": "false",
+                },
+                clear=True,
+            ):
+                config = build_database_config(backend_dir)
+
+        self.assertEqual(config["OPTIONS"]["ssl"]["ca"], str(backend_dir / "ca.pem"))
+        self.assertIs(config["OPTIONS"]["ssl"]["check_hostname"], False)
+
     @patch("pymysql.connect")
     def test_create_mysql_database_command(self, mocked_connect):
         cursor = mocked_connect.return_value.cursor.return_value.__enter__.return_value

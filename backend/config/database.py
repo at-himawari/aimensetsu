@@ -10,6 +10,12 @@ def _optional_int(value: str | None) -> int | None:
     return int(value)
 
 
+def _optional_bool(value: str | None) -> bool | None:
+    if value is None or value == "":
+        return None
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
 def _install_pymysql_if_needed(engine: str) -> None:
     if engine != "django.db.backends.mysql":
         return
@@ -49,6 +55,9 @@ def build_database_config(base_dir) -> dict:
     ssl_ca = _resolve_ssl_ca_path(os.getenv("DB_SSL_CA"), base_dir)
     if ssl_ca:
         config["OPTIONS"]["ssl"] = {"ca": ssl_ca}
+        ssl_check_hostname = _optional_bool(os.getenv("DB_SSL_CHECK_HOSTNAME"))
+        if ssl_check_hostname is not None:
+            config["OPTIONS"]["ssl"]["check_hostname"] = ssl_check_hostname
     elif os.getenv("DB_SSL_DISABLED", "false").lower() != "true":
         config["OPTIONS"]["ssl"] = {}
 
