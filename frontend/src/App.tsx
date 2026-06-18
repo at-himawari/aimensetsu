@@ -54,6 +54,8 @@ function isAuthenticatedAuthState(authState: AuthState) {
 type HistoryItem = {
   id: string;
   title: string;
+  previewTitle: string;
+  previewMeta: string;
   transcript: string[];
   reflection: {
     strengths: string[];
@@ -62,18 +64,30 @@ type HistoryItem = {
   };
 };
 
-function formatHistoryTitle(session: InterviewSession) {
+function formatSessionDateLabel(session: InterviewSession) {
   const startedAt = new Date(session.started_at);
-  const dateLabel = Number.isNaN(startedAt.getTime())
+  return Number.isNaN(startedAt.getTime())
     ? session.started_at
     : startedAt.toLocaleDateString("ja-JP", {
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
       });
+}
+
+function formatHistoryTitle(session: InterviewSession) {
+  const dateLabel = formatSessionDateLabel(session);
   const roleLabel = session.job_role || session.mode || "面接練習";
 
   return `${dateLabel} ${roleLabel}`;
+}
+
+function formatHistoryPreviewMeta(session: InterviewSession) {
+  const dateLabel = formatSessionDateLabel(session);
+  if (typeof session.consumed_minutes === "number" && session.consumed_minutes > 0) {
+    return `${dateLabel} ${session.consumed_minutes}分`;
+  }
+  return dateLabel;
 }
 
 function mapMessagesToTranscript(messages: InterviewMessage[]) {
@@ -89,9 +103,13 @@ function mapReflection(reflection?: Reflection | null): HistoryItem["reflection"
 }
 
 function mapSessionToHistoryItem(session: InterviewSession, messages: InterviewMessage[] = [], reflection?: Reflection | null): HistoryItem {
+  const previewTitle = session.job_role || session.mode || "面接練習";
+
   return {
     id: session.session_id,
     title: formatHistoryTitle(session),
+    previewTitle,
+    previewMeta: formatHistoryPreviewMeta(session),
     transcript: mapMessagesToTranscript(messages),
     reflection: mapReflection(reflection),
   };
@@ -101,6 +119,8 @@ const initialHistoryItems: HistoryItem[] = [
   {
     id: "history_1",
     title: "2026-04-24 Backend Engineer 模擬面接",
+    previewTitle: "Backend Engineer 模擬面接",
+    previewMeta: "2026/04/24 26分",
     transcript: [
       "assistant: これまでのご経歴を教えてください。",
       "user: バックエンド開発を中心に、API と課金基盤の改善を進めてきました。",
@@ -116,6 +136,8 @@ const initialHistoryItems: HistoryItem[] = [
   {
     id: "history_2",
     title: "2026-04-23 自己紹介集中練習",
+    previewTitle: "自己紹介集中練習",
+    previewMeta: "2026/04/23 18分",
     transcript: [
       "assistant: 1分で自己紹介をお願いします。",
       "user: 直近では SaaS プロダクトの改善を担当していました。",
@@ -309,8 +331,6 @@ const featureCards: Array<{ icon: LandingIconName; title: string; body: string }
   { icon: "voice", title: "リアルな音声対話", body: "マイクを使った自然な会話で、本番に近い練習が可能。" },
   { icon: "feedback", title: "AIによる振り返り", body: "良かった点・改善点・次回アドバイスをAIが客観的にフィードバック。" },
   { icon: "history", title: "練習履歴の管理", body: "すべての面接履歴を保存し、振り返りや前回の把握に役立ちます。" },
-  { icon: "credit", title: "クレジット制で安心", body: "初回無料クレジット付き。使った分だけ、明確な料金体系。" },
-  { icon: "device", title: "いつでもどこでも", body: "PC・スマートフォンどちらでも、スキマ時間に集中して練習。" },
 ];
 
 const workflowSteps = [
@@ -319,6 +339,18 @@ const workflowSteps = [
   ["3", "AIと音声で対話", "マイクを使って回答。AIがリアルタイムで応答。"],
   ["4", "振り返りを確認", "良かった点・改善点・次のアクションを確認。"],
   ["5", "次の面接に活かす", "改善を重ねて、自信を持って本番に臨みましょう。"],
+];
+
+const authenticatedSidebarItems: Array<{
+  icon: LandingIconName;
+  label: string;
+  isActive: (screen: ScreenKey) => boolean;
+  onSelect: ScreenKey;
+}> = [
+  { icon: "home", label: "ホーム", isActive: (screen) => screen === "home", onSelect: "home" },
+  { icon: "resume", label: "職務経歴書", isActive: (screen) => screen === "resume", onSelect: "resume" },
+  { icon: "history", label: "履歴", isActive: (screen) => screen === "history" || screen === "reflection", onSelect: "history" },
+  { icon: "credit", label: "クレジット・課金", isActive: (screen) => screen === "billing", onSelect: "billing" },
 ];
 
 function HomeDashboardPreview() {
@@ -341,8 +373,8 @@ function HomeDashboardPreview() {
             <span>新しい面接練習を始める</span>
           </section>
           <section>
-            <strong>残りクレジット</strong>
-            <p><b>12.5</b> クレジット</p>
+            <strong>残り練習時間</strong>
+            <p><b>60</b> 分</p>
           </section>
           <section>
             <strong>職務経歴書が未登録です</strong>
@@ -401,7 +433,7 @@ function LandingSections() {
               <span>職務経歴書_2024.pdf</span>
               <span>職務経歴書_エンジニア.pdf</span>
             </div>
-            <p>ファイルはAmazon Web Service上で安全に保存され、テキストを自動で抽出・解析します。</p>
+            <p>ファイルはAmazon Web Services上で安全に保存され、テキストを自動で抽出・解析します。</p>
           </article>
           <article>
             <h3>面接練習画面</h3>
@@ -435,9 +467,9 @@ function LandingSections() {
             <h2>シンプルな料金体系</h2>
             <div className="pricing-cards">
               <article>
-                <span>初回無料クレジット</span>
-                <strong>10 クレジット</strong>
-                <p>約30分</p>
+                <span>初回無料お試し</span>
+                <strong>無料で30分</strong>
+                <p>登録後すぐに面接練習を始められます。</p>
               </article>
               <article>
                 <span>通常プラン</span>
@@ -449,14 +481,14 @@ function LandingSections() {
           <div className="security-panel">
             <h2>安心・安全の仕組み</h2>
             <div>
-              <span><LandingIcon name="shield" />Amazon Web Serviceで安全に本人確認</span>
+              <span><LandingIcon name="shield" />Amazon Web Servicesで安全に本人確認</span>
               <span><LandingIcon name="lock" />データは暗号化して安全な環境に保存</span>
               <span><LandingIcon name="payment" />決済情報は安全な決済基盤で保護</span>
             </div>
           </div>
           <div className="final-cta">
             <h2>まずは無料で体験してみませんか?</h2>
-            <p>初回10クレジット付きで、すぐに面接練習を始められます。</p>
+            <p>初回30分の無料体験から、すぐに面接練習を始められます。</p>
             <a href="#account">無料で始める</a>
           </div>
         </div>
@@ -474,18 +506,17 @@ export default function App() {
   const [phoneSetupError, setPhoneSetupError] = useState<string | null>(null);
   const [isPhoneSetupCodeSent, setIsPhoneSetupCodeSent] = useState(false);
   const [screen, setScreen] = useState<ScreenKey>("login");
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [creditBalanceMinutes, setCreditBalanceMinutes] = useState(30);
   const [isBillingLoading, setIsBillingLoading] = useState(false);
   const [billingError, setBillingError] = useState<string | null>(null);
-  const [historyItems, setHistoryItems] = useState([...initialHistoryItems]);
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [resumes, setResumes] = useState<ResumeItem[]>([...initialResumes]);
   const [selectedResumeId, setSelectedResumeId] = useState<string | null>(initialResumes[0]?.id ?? null);
   const [isResumeLoading, setIsResumeLoading] = useState(false);
   const [resumeError, setResumeError] = useState<string | null>(null);
-  const [selectedHistoryId, setSelectedHistoryId] = useState<string>(initialHistoryItems[0].id);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string>("");
   const [latestReflection, setLatestReflection] = useState<HistoryItem["reflection"] | null>(null);
   const [isStartWithoutResumeDialogOpen, setIsStartWithoutResumeDialogOpen] = useState(false);
   const lastTrackedScreenRef = useRef<ScreenKey | null>(null);
@@ -512,7 +543,6 @@ export default function App() {
     }
 
     if (!isLoggedIn && screen !== "login") {
-      setIsMenuOpen(false);
       setIsStartWithoutResumeDialogOpen(false);
       setScreen("login");
     }
@@ -531,6 +561,7 @@ export default function App() {
     await Promise.all([
       loadResumes(nextAuthState),
       loadCreditBalance(nextAuthState),
+      loadHistory(nextAuthState),
     ]);
     setScreen("home");
   };
@@ -675,13 +706,13 @@ export default function App() {
     };
   }, [authState]);
 
-  const loadHistoryDetail = async (historyId: string) => {
-    if (!isAuthenticatedAuthState(authState)) {
+  const loadHistoryDetail = async (historyId: string, nextAuthState: AuthState = authState) => {
+    if (!isAuthenticatedAuthState(nextAuthState)) {
       return;
     }
 
     try {
-      const response = await apiClient.getHistoryDetail(authState, historyId);
+      const response = await apiClient.getHistoryDetail(nextAuthState, historyId);
       const nextItem = mapSessionToHistoryItem(
         response.data.session,
         response.data.messages,
@@ -700,22 +731,22 @@ export default function App() {
     }
   };
 
-  const loadHistory = async () => {
-    if (!isAuthenticatedAuthState(authState)) {
+  const loadHistory = async (nextAuthState: AuthState = authState) => {
+    if (!isAuthenticatedAuthState(nextAuthState)) {
       return;
     }
 
     setIsHistoryLoading(true);
     setHistoryError(null);
     try {
-      const response = await apiClient.getHistory(authState);
+      const response = await apiClient.getHistory(nextAuthState);
       const nextItems = response.data.map((session) => mapSessionToHistoryItem(session));
       setHistoryItems(nextItems);
 
       const nextSelectedId = nextItems[0]?.id ?? "";
       setSelectedHistoryId(nextSelectedId);
       if (nextSelectedId) {
-        await loadHistoryDetail(nextSelectedId);
+        await loadHistoryDetail(nextSelectedId, nextAuthState);
       }
     } catch (error) {
       const message = error instanceof ApiError ? error.message : "履歴を取得できませんでした。";
@@ -759,7 +790,6 @@ export default function App() {
   const handleOpenHistoryDetail = (historyId: string) => {
     setSelectedHistoryId(historyId);
     setScreen("history");
-    setIsMenuOpen(false);
     trackEvent("select_content", {
       content_type: "history",
       item_id: historyId,
@@ -800,11 +830,10 @@ export default function App() {
 
   const navigateTo = (nextScreen: ScreenKey) => {
     setScreen(nextScreen);
-    setIsMenuOpen(false);
     if (nextScreen === "home" || nextScreen === "billing") {
       void loadCreditBalance();
     }
-    if (nextScreen === "history") {
+    if (nextScreen === "home" || nextScreen === "history") {
       void loadHistory();
     }
     if (nextScreen === "resume") {
@@ -907,14 +936,12 @@ export default function App() {
     if (resumes.length === 0) {
       setSelectedResumeId(null);
       setIsStartWithoutResumeDialogOpen(true);
-      setIsMenuOpen(false);
       trackEvent("start_interview_prompt_without_resume", {
         credit_balance_minutes: creditBalanceMinutes,
       });
       return;
     }
     setScreen("session");
-    setIsMenuOpen(false);
     trackEvent("start_interview", {
       source: screen,
       has_resume: true,
@@ -926,7 +953,6 @@ export default function App() {
     setSelectedResumeId(null);
     setIsStartWithoutResumeDialogOpen(false);
     setScreen("session");
-    setIsMenuOpen(false);
     trackEvent("start_interview", {
       source: "without_resume_dialog",
       has_resume: false,
@@ -1163,7 +1189,6 @@ export default function App() {
 
   const handleLogout = () => {
     logout();
-    setIsMenuOpen(false);
     setScreen("login");
     trackEvent("logout");
   };
@@ -1200,7 +1225,7 @@ export default function App() {
             </header>
             <div className="landing-hero-grid">
               <section className="landing-copy" aria-labelledby="landing-title">
-                <h1 id="landing-title">AIと、想定を超える面接力を。</h1>
+                <h1 id="landing-title">AIと、想定を超える<span className="nowrap-phrase">面接力を。</span></h1>
                 <p>あなたの経歴に合わせた本番さながらの面接練習と、客観的な振り返りで、内定への一歩を確実に。</p>
                 <div className="hero-benefits">
                   {heroBenefits.map(({ icon, label }) => (
@@ -1264,48 +1289,6 @@ export default function App() {
         <h1>AI面接コーチ</h1>
         <p className="lead">本番前に、納得いくまで面接練習を重ねられます。</p>
 
-        {shouldShowAuthenticatedChrome ? (
-          <div className="hero-toolbar">
-            <div className="utility-actions">
-              <button
-                onClick={() => setIsMenuOpen((current) => !current)}
-                className="utility-button menu-toggle"
-                aria-expanded={isMenuOpen}
-                aria-haspopup="menu"
-                aria-label="メニューを開く"
-              >
-                <span className="menu-toggle-icon" aria-hidden="true">
-                  ☰
-                </span>
-                <span>メニュー</span>
-              </button>
-              {isMenuOpen ? (
-                <div className="menu-panel" role="menu" aria-label="共通メニュー">
-                  <button className="menu-item" role="menuitem" onClick={() => navigateTo("home")}>
-                    ホーム
-                  </button>
-                  <button className="menu-item" role="menuitem" onClick={() => navigateTo("history")}>
-                    振り返り・履歴
-                  </button>
-                  <button className="menu-item" role="menuitem" onClick={() => navigateTo("resume")}>
-                    経歴書を管理する
-                  </button>
-                  <button className="menu-item" role="menuitem" onClick={() => navigateTo("billing")}>
-                    追加購入する
-                  </button>
-                  <button
-                    className="menu-item menu-item-danger"
-                    role="menuitem"
-                    onClick={handleLogout}
-                  >
-                    ログアウト
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-
         {isLoading ? (
           <LoadingState
             title="読み込み中"
@@ -1316,35 +1299,23 @@ export default function App() {
         <section className="app-auth-layout">
           {shouldShowAuthenticatedChrome ? (
             <aside className="app-sidebar" aria-label="アプリメニュー">
-              <strong>AI面接コーチ</strong>
-              <button
-                className={screen === "home" ? "app-sidebar-item active" : "app-sidebar-item"}
-                type="button"
-                onClick={() => navigateTo("home")}
-              >
-                ホーム
-              </button>
-              <button
-                className={screen === "resume" ? "app-sidebar-item active" : "app-sidebar-item"}
-                type="button"
-                onClick={() => navigateTo("resume")}
-              >
-                職務経歴書
-              </button>
-              <button
-                className={screen === "history" || screen === "reflection" ? "app-sidebar-item active" : "app-sidebar-item"}
-                type="button"
-                onClick={() => navigateTo("history")}
-              >
-                履歴
-              </button>
-              <button
-                className={screen === "billing" ? "app-sidebar-item active" : "app-sidebar-item"}
-                type="button"
-                onClick={() => navigateTo("billing")}
-              >
-                クレジット・課金
-              </button>
+              <strong className="app-sidebar-brand">
+                <img className="app-sidebar-brand-logo" src="/favicon.png" alt="" aria-hidden="true" />
+                <span>AI面接コーチ</span>
+              </strong>
+              {authenticatedSidebarItems.map(({ icon, label, isActive, onSelect }) => (
+                <button
+                  key={label}
+                  className={isActive(screen) ? "app-sidebar-item active" : "app-sidebar-item"}
+                  type="button"
+                  onClick={() => navigateTo(onSelect)}
+                >
+                  <span aria-hidden="true" className="app-sidebar-item-icon">
+                    <LandingIcon name={icon} />
+                  </span>
+                  <span>{label}</span>
+                </button>
+              ))}
               <button className="app-sidebar-item app-sidebar-logout" type="button" onClick={handleLogout}>
                 ログアウト
               </button>
@@ -1371,11 +1342,14 @@ export default function App() {
             <HomeScreen
               creditBalanceMinutes={creditBalanceMinutes}
               hasResume={resumes.length > 0}
+              recentHistoryItems={historyItems}
+              isHistoryLoading={isHistoryLoading}
               onStartPractice={handleStartPracticeFromHome}
               onAddCredits={() => navigateTo("billing")}
               onMove={(nextScreen) => {
                 navigateTo(nextScreen);
               }}
+              onOpenHistory={handleOpenHistoryDetail}
             />
           ) : null}
           {screen === "resume" ? (

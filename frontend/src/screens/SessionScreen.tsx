@@ -33,6 +33,24 @@ type ConversationLogEntry = {
   isPartial?: boolean;
 };
 
+function SessionMicIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 4.25a3 3 0 0 0-3 3v4.25a3 3 0 0 0 6 0V7.25a3 3 0 0 0-3-3Z" />
+      <path d="M6.75 10.75v.75a5.25 5.25 0 0 0 10.5 0v-.75M12 16.75v3M9.25 19.75h5.5" />
+    </svg>
+  );
+}
+
+function SessionThinkingIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <path d="M5.25 5.25h13.5v9.5H12l-4.25 4v-4h-2.5v-9.5Z" />
+      <path d="m9 10.1 1.9 1.9L15.25 8" />
+    </svg>
+  );
+}
+
 type RealtimeEventPayload = {
   type?: string;
   item_id?: string;
@@ -561,52 +579,16 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
   const isStarting = status === "starting";
   const isConnected = status === "connected";
   const shouldShowConnectionLog = import.meta.env.DEV;
+  const assistantEntries = conversationLog.filter((entry) => entry.speaker === "assistant");
+  const userEntries = conversationLog.filter((entry) => entry.speaker === "user");
+  const latestAssistantEntry = assistantEntries[assistantEntries.length - 1] ?? null;
+  const latestUserEntry = userEntries[userEntries.length - 1] ?? null;
+  const promptText = latestAssistantEntry?.content ?? "";
+  const userResponseText = latestUserEntry?.content ?? "";
+  const shouldShowThinking = isStarting || isAssistantSpeaking || (isConnected && !latestAssistantEntry);
 
   return (
     <section className="screen-card session-screen-card">
-      <div className="session-top-row">
-        <div>
-          <p className="screen-label">Interview</p>
-          <h2>面接練習</h2>
-          <p className="section-note">マイクで話すと、AI面接コーチが音声で返答します。</p>
-          {resumeFileName && !shouldIgnoreResume ? <p className="section-note">使用レジュメ: {resumeFileName}</p> : null}
-          <label className="audio-guard-toggle">
-            <input
-              type="checkbox"
-              checked={shouldMuteDuringAssistantSpeech}
-              onChange={(event) => {
-                const nextValue = event.target.checked;
-                shouldMuteDuringAssistantSpeechRef.current = nextValue;
-                setShouldMuteDuringAssistantSpeech(nextValue);
-                const localAudioTrack = localAudioTrackRef.current;
-                if (localAudioTrack) {
-                  localAudioTrack.enabled = !(nextValue && isAssistantSpeaking);
-                }
-              }}
-            />
-            AI発話中はマイクを自動ミュート
-          </label>
-        </div>
-
-        <div className="realtime-panel" aria-live="polite">
-          <div className={`realtime-meter realtime-meter-${status}`}>
-            <span />
-            <span />
-            <span />
-          </div>
-          <div>
-            <p className="realtime-status">
-              {isConnected ? "接続中" : isStarting ? "接続準備中" : "未接続"}
-            </p>
-            <p className="section-note">
-              {isAssistantSpeaking && shouldMuteDuringAssistantSpeech
-                ? "AI応答中: マイク一時ミュート"
-                : "Voice: marin"}
-            </p>
-          </div>
-        </div>
-      </div>
-
       {errorMessage ? <p className="inline-error">{errorMessage}</p> : null}
       {isStarting || isFinishing ? (
         <LoadingState
@@ -615,24 +597,96 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
         />
       ) : null}
 
-      <div className="conversation-box session-conversation-log" aria-live="polite" ref={conversationLogRef}>
-        <p className="conversation-heading">対話ログ</p>
-        {conversationLog.length > 0 ? (
-          conversationLog.map((entry) => (
-            <div
-              key={entry.id}
-              className={entry.speaker === "assistant" ? "chat-row assistant-row" : "chat-row user-row"}
-            >
-              <p className="chat-speaker">{entry.speaker === "assistant" ? "AI面接コーチ" : "あなた"}</p>
-              <div className={entry.speaker === "assistant" ? "chat-bubble assistant-bubble" : "chat-bubble user-bubble"}>
-                {entry.content}
-                {entry.isPartial ? <span className="partial-indicator">...</span> : null}
+      <div className="session-preview-window">
+        <div className="session-preview-header">
+          <strong>面接練習中</strong>
+          <div className="session-preview-actions" aria-live="polite">
+            <span>{isConnected ? "接続中" : isStarting ? "接続準備中" : "未接続"}</span>
+            <button className="session-preview-end" onClick={handleFinish} disabled={isFinishing}>
+              {isFinishing ? "終了処理中" : "面接を終了"}
+            </button>
+          </div>
+        </div>
+
+        <div className="session-preview-layout">
+          <div className="session-preview-main">
+            <div className="preview-message session-prompt-card">
+              <span className="preview-avatar">AI</span>
+              {promptText ? <p>{promptText}</p> : <p className="empty-conversation">接続後に質問が表示されます。</p>}
+            </div>
+
+            {userResponseText ? (
+              <div className="preview-answer session-answer-card">
+                <strong>あなたの回答</strong>
+                <p className="session-answer-text">
+                  {userResponseText}
+                  {latestUserEntry?.isPartial ? <span className="partial-indicator">...</span> : null}
+                </p>
+              </div>
+            ) : null}
+
+            {shouldShowThinking ? (
+              <div className="preview-thinking session-thinking-card">
+                <span aria-hidden="true"><SessionThinkingIcon /></span>
+                AIが考えています...
+              </div>
+            ) : null}
+
+            <div className="preview-mic session-mic-card">
+              <span aria-hidden="true"><SessionMicIcon /></span>
+              <strong>{isConnected ? "音声で話せます" : "クリックして話す"}</strong>
+              <small>{isAssistantSpeaking && shouldMuteDuringAssistantSpeech ? "AI応答中はマイクを自動で抑制中です" : "AI応答中は自動でミュートになります"}</small>
+              {resumeFileName && !shouldIgnoreResume ? <p className="session-resume-note">使用レジュメ: {resumeFileName}</p> : null}
+              <label className="audio-guard-toggle">
+                <input
+                  type="checkbox"
+                  checked={shouldMuteDuringAssistantSpeech}
+                  onChange={(event) => {
+                    const nextValue = event.target.checked;
+                    shouldMuteDuringAssistantSpeechRef.current = nextValue;
+                    setShouldMuteDuringAssistantSpeech(nextValue);
+                    const localAudioTrack = localAudioTrackRef.current;
+                    if (localAudioTrack) {
+                      localAudioTrack.enabled = !(nextValue && isAssistantSpeaking);
+                    }
+                  }}
+                />
+                AI発話中はマイクを自動ミュート
+              </label>
+              <div className="actions session-actions">
+                {!isConnected ? (
+                  <button className="primary-button" onClick={startInterview} disabled={isStarting || isFinishing}>
+                    {isStarting ? "接続中" : "面接を開始する"}
+                  </button>
+                ) : (
+                  <button className="secondary-button" onClick={stopInterviewAudio} disabled={isFinishing}>
+                    音声を停止する
+                  </button>
+                )}
+                <button className="secondary-button" onClick={onBilling} disabled={isFinishing}>
+                  クレジット追加
+                </button>
               </div>
             </div>
-          ))
-        ) : (
-          <p className="empty-conversation">接続後、あなたとAIの発話がここに表示されます。</p>
-        )}
+          </div>
+
+          <aside className="preview-log session-live-log" aria-live="polite" ref={conversationLogRef}>
+            <strong>対話ログ</strong>
+            {conversationLog.length > 0 ? (
+              conversationLog.map((entry) => (
+                <div key={entry.id} className="session-log-entry">
+                  <p>{entry.speaker === "assistant" ? "AI面接官" : "あなた"}</p>
+                  <span>
+                    {entry.content}
+                    {entry.isPartial ? <span className="partial-indicator">...</span> : null}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <p className="empty-conversation">接続後、ここにあなたとAIの対話が表示されます。</p>
+            )}
+          </aside>
+        </div>
       </div>
 
       {shouldShowConnectionLog ? (
@@ -643,24 +697,6 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
           ))}
         </div>
       ) : null}
-
-      <div className="actions">
-        {!isConnected ? (
-          <button className="primary-button" onClick={startInterview} disabled={isStarting || isFinishing}>
-            {isStarting ? "接続中" : "面接を開始する"}
-          </button>
-        ) : (
-          <button className="secondary-button" onClick={stopInterviewAudio} disabled={isFinishing}>
-            音声を停止する
-          </button>
-        )}
-        <button className="secondary-button" onClick={onBilling} disabled={isFinishing}>
-          クレジット追加
-        </button>
-        <button className="primary-button" onClick={handleFinish} disabled={isFinishing}>
-          {isFinishing ? "終了処理中" : "面接を終了する"}
-        </button>
-      </div>
     </section>
   );
 }

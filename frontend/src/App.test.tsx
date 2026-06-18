@@ -204,8 +204,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "面接を終了する" }));
     expect(screen.getByRole("heading", { name: "振り返り" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "メニューを開く" }));
-    await user.click(screen.getByRole("menuitem", { name: "振り返り・履歴" }));
+    await user.click(screen.getByRole("button", { name: "履歴" }));
     expect(screen.getByRole("heading", { name: "履歴" })).toBeInTheDocument();
   });
 
@@ -655,7 +654,7 @@ describe("App", () => {
     expect(screen.queryByRole("dialog", { name: "職務経歴書なしで始めますか？" })).not.toBeInTheDocument();
   });
 
-  it("opens logout inside the shared menu", async () => {
+  it("shows logout in the app sidebar", async () => {
     const user = userEvent.setup();
     render(
       <AuthProvider>
@@ -665,8 +664,7 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: "無料体験を始める" }));
     await screen.findByRole("heading", { name: "ホーム" });
-    await user.click(screen.getByRole("button", { name: "メニューを開く" }));
-    expect(screen.getByRole("menuitem", { name: "ログアウト" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ログアウト" })).toBeInTheDocument();
   });
 
   it("does not treat persisted demo auth as logged in for cognito production mode", () => {

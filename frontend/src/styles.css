@@ -79,13 +79,6 @@ button {
   margin-top: 24px;
 }
 
-.utility-actions {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -95,8 +88,7 @@ button {
 
 .primary-button,
 .secondary-button,
-.retry-button,
-.utility-button {
+.retry-button {
   border-radius: 999px;
   padding: 10px 16px;
   border: none;
@@ -120,62 +112,6 @@ button {
   color: #14213d;
 }
 
-.utility-button {
-  background: transparent;
-  color: #52617a;
-  border: 1px solid rgba(20, 33, 61, 0.12);
-}
-
-.menu-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.menu-toggle-icon {
-  font-size: 1rem;
-  line-height: 1;
-}
-
-.menu-panel {
-  position: absolute;
-  top: calc(100% + 10px);
-  right: 0;
-  min-width: 220px;
-  padding: 8px;
-  display: grid;
-  gap: 4px;
-  border-radius: 18px;
-  background: #fffaf1;
-  border: 1px solid rgba(20, 33, 61, 0.1);
-  box-shadow: 0 18px 40px rgba(20, 33, 61, 0.12);
-  z-index: 10;
-}
-
-.menu-item {
-  text-align: left;
-  padding: 12px 14px;
-  border: none;
-  border-radius: 12px;
-  background: transparent;
-  color: #14213d;
-  cursor: pointer;
-  transition:
-    transform 180ms ease,
-    background-color 220ms ease,
-    box-shadow 220ms ease;
-}
-
-.menu-item:hover {
-  background: rgba(42, 157, 143, 0.08);
-  transform: translateY(-1px);
-  box-shadow: 0 10px 20px rgba(20, 33, 61, 0.06);
-}
-
-.menu-item-danger {
-  color: #9f2a2a;
-}
-
 .loading-card,
 .retry-panel,
 .screen-card {
@@ -196,7 +132,7 @@ button {
 
 .session-page {
   place-items: start center;
-  padding: 36px 24px;
+  padding: 40px 24px 56px;
 }
 
 .session-page .hero-card {
@@ -224,7 +160,7 @@ button {
 .session-page .screen-shell {
   width: 100%;
   margin-top: 28px;
-  padding-top: 24px;
+  padding-top: 28px;
   border-top: 1px solid rgba(20, 33, 61, 0.12);
 }
 
@@ -314,12 +250,12 @@ button {
 }
 
 .session-page .app-auth-layout {
-  min-height: 620px;
+  min-height: 700px;
 }
 
 .session-page .app-auth-layout .screen-shell {
   margin-top: 0;
-  padding-top: 0;
+  padding: 36px 40px 40px;
   border-top: none;
 }
 
@@ -353,7 +289,38 @@ button {
   line-height: 1.35;
 }
 
+.app-sidebar strong.app-sidebar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: 100%;
+  margin-bottom: 16px;
+  white-space: nowrap;
+}
+
+.app-sidebar-brand span {
+  display: inline;
+  white-space: nowrap;
+}
+
+.app-sidebar-brand-logo {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: block;
+  object-fit: cover;
+  background: #f4f7ff;
+  border: 1px solid #d9e2f0;
+  border-radius: 6px;
+  box-shadow: 0 4px 10px rgba(17, 31, 68, 0.06);
+  filter: grayscale(0.22) brightness(1.28) saturate(0.7) contrast(0.92);
+}
+
 .app-sidebar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   min-height: 38px;
   padding: 0 12px;
   color: #53617a;
@@ -364,6 +331,23 @@ button {
   cursor: pointer;
   font-size: 0.9rem;
   font-weight: 650;
+}
+
+.app-sidebar-item-icon {
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  color: #4059df;
+}
+
+.app-sidebar-item-icon svg {
+  width: 100%;
+  height: 100%;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .app-sidebar-item.active,
@@ -1263,18 +1247,24 @@ button {
   align-items: end;
 }
 
-.session-top-row .realtime-panel {
-  margin-top: 0;
+.session-screen-card {
+  display: grid;
+  gap: 22px;
 }
 
 .audio-guard-toggle {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 0;
+  padding: 12px 14px;
   color: #52617a;
   font-size: 0.9rem;
   font-weight: 700;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #dbe5f4;
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .audio-guard-toggle input {
@@ -1341,6 +1331,12 @@ button {
   color: #14213d;
   font-size: 0.9rem;
   font-weight: 800;
+}
+
+.session-actions {
+  width: 100%;
+  margin-top: 6px;
+  justify-content: center;
 }
 
 .empty-conversation {
@@ -1596,12 +1592,10 @@ button {
     align-items: stretch;
   }
 
-  .utility-actions,
   .actions {
     width: 100%;
   }
 
-  .utility-actions .utility-button,
   .actions button,
   .hero-toolbar > .primary-button {
     flex: 1 1 auto;
@@ -1746,6 +1740,10 @@ button {
   font-weight: 700;
   line-height: 1.16;
   letter-spacing: 0;
+}
+
+.nowrap-phrase {
+  white-space: nowrap;
 }
 
 .landing-copy > p {
@@ -2030,16 +2028,23 @@ button {
 
 .feature-layout {
   display: grid;
-  grid-template-columns: minmax(0, 0.86fr) minmax(480px, 1fr);
-  gap: 32px;
+  grid-template-columns: minmax(0, 1.08fr) minmax(420px, 0.92fr);
+  gap: 38px;
   align-items: stretch;
+}
+
+.feature-layout > div:first-child {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
 }
 
 .feature-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+  margin-top: 16px;
 }
 
 .feature-card,
@@ -2053,8 +2058,8 @@ button {
 }
 
 .feature-card {
-  min-height: 148px;
-  padding: 18px;
+  min-height: 220px;
+  padding: 28px 24px 30px;
 }
 
 .feature-card > span {
@@ -2084,7 +2089,7 @@ button {
 .feature-card h3,
 .workflow-step h3,
 .product-cards h3 {
-  margin: 16px 0 0;
+  margin: 18px 0 0;
   color: #08122d;
   font-size: 1rem;
   font-weight: 680;
@@ -2095,7 +2100,7 @@ button {
 .workflow-step p,
 .product-cards p,
 .account-layout p {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   color: #4d5a73;
   font-size: 0.9rem;
   line-height: 1.7;
@@ -2103,20 +2108,20 @@ button {
 
 .dashboard-preview {
   display: grid;
-  grid-template-columns: 150px 1fr;
+  grid-template-columns: 166px 1fr;
   overflow: hidden;
-  min-height: 350px;
+  min-height: 388px;
   background: #ffffff;
   border: 1px solid #e0e6f0;
-  border-radius: 10px;
+  border-radius: 14px;
   box-shadow: 0 22px 64px rgba(20, 37, 78, 0.12);
 }
 
 .dashboard-preview aside {
   display: grid;
   align-content: start;
-  gap: 14px;
-  padding: 20px 16px;
+  gap: 18px;
+  padding: 28px 20px 26px;
   background: #fbfcff;
   border-right: 1px solid #e8edf5;
 }
@@ -2130,6 +2135,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
 }
 
 .dashboard-brand-logo {
@@ -2144,8 +2150,10 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-height: 20px;
   color: #4d5a73;
   font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .dashboard-preview aside span svg {
@@ -2159,7 +2167,7 @@ button {
 }
 
 .dashboard-main {
-  padding: 22px;
+  padding: 30px;
 }
 
 .dashboard-main h3 {
@@ -2168,14 +2176,14 @@ button {
 
 .dashboard-panels {
   display: grid;
-  grid-template-columns: 1fr 0.55fr;
-  gap: 12px;
-  margin-top: 28px;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-top: 24px;
 }
 
 .dashboard-panels section {
   min-height: 92px;
-  padding: 18px;
+  padding: 22px;
   background: #ffffff;
   border: 1px solid #e1e7f2;
   border-radius: 8px;
@@ -2475,22 +2483,261 @@ button {
   width: min(1120px, 100%);
 }
 
-.session-page .screen-shell {
-  border-top-color: #e2e8f3;
+.session-page {
+  background:
+    radial-gradient(circle at top right, rgba(84, 60, 255, 0.12), transparent 28%),
+    radial-gradient(circle at top left, rgba(40, 119, 255, 0.12), transparent 32%),
+    linear-gradient(180deg, #f4f8ff 0%, #ffffff 46%);
 }
 
-.session-page .screen-card {
-  padding: 24px;
-  background: #ffffff;
-  border: 1px solid #e2e8f3;
-  border-radius: 8px;
-  box-shadow: 0 18px 50px rgba(20, 37, 78, 0.08);
+.session-page .hero-card > .eyebrow,
+.session-page .hero-card > h1,
+.session-page .hero-card > .lead {
+  display: none;
+}
+
+.session-page .screen-shell {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+  border-top-color: #e2e8f3;
 }
 
 .session-page .screen-card {
   padding: 0;
   border: none;
   box-shadow: none;
+}
+
+.session-page .app-auth-layout {
+  overflow: hidden;
+  border: 1px solid rgba(163, 179, 215, 0.42);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 250, 255, 0.98)),
+    #ffffff;
+  box-shadow: 0 32px 80px rgba(17, 31, 68, 0.12);
+}
+
+.session-page .app-sidebar {
+  padding: 24px 16px;
+}
+
+.session-page .app-auth-layout .screen-shell {
+  background:
+    linear-gradient(180deg, rgba(247, 250, 255, 0.9), rgba(255, 255, 255, 0.98));
+}
+
+.session-page .session-screen-card {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.session-page .section-note {
+  margin-top: 0;
+  line-height: 1.75;
+}
+
+.session-preview-window {
+  overflow: hidden;
+  color: #0b1635;
+  background: linear-gradient(180deg, #ffffff, #fbfdff);
+  border: 1px solid #e2e8f3;
+  border-radius: 22px;
+  box-shadow: 0 24px 64px rgba(17, 31, 68, 0.12);
+}
+
+.session-preview-header {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 24px;
+  border-bottom: 1px solid #e8edf6;
+}
+
+.session-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #44506b;
+  font-size: 0.82rem;
+}
+
+.session-preview-actions span,
+.session-preview-end {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  background: #f5f7fb;
+  border: 1px solid #e2e8f3;
+  border-radius: 8px;
+}
+
+.session-preview-end {
+  color: #44506b;
+  cursor: pointer;
+}
+
+.session-preview-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 184px;
+  gap: 14px;
+  padding: 18px;
+  align-items: start;
+}
+
+.session-preview-main {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  align-content: start;
+  align-self: start;
+}
+
+.session-prompt-card,
+.session-answer-card,
+.session-thinking-card,
+.session-live-log {
+  background: #ffffff;
+  border: 1px solid #e1e7f2;
+  border-radius: 8px;
+}
+
+.session-prompt-card {
+  min-height: 84px;
+}
+
+.session-answer-card {
+  min-height: 92px;
+}
+
+.session-answer-text {
+  margin: 0;
+  color: #30415f;
+  font-size: 0.86rem;
+  line-height: 1.7;
+}
+
+.session-thinking-card {
+  min-height: 48px;
+}
+
+.session-thinking-card svg,
+.session-mic-card svg {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.session-mic-card {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 8px 0 2px;
+}
+
+.session-mic-card > span {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  color: #3154ff;
+  background: #dfe4ff;
+  border: 7px solid #f1f3ff;
+  border-radius: 999px;
+}
+
+.session-mic-card strong {
+  font-size: 1rem;
+  color: #0b1635;
+}
+
+.session-mic-card small {
+  color: #60708b;
+  text-align: center;
+}
+
+.session-resume-note {
+  margin: 0;
+  color: #52617a;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.session-live-log {
+  padding: 16px 18px;
+}
+
+.session-log-entry + .session-log-entry {
+  margin-top: 12px;
+}
+
+.session-log-entry p {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #14213d;
+}
+
+.session-log-entry span {
+  display: block;
+  margin-top: 6px;
+  color: #44506b;
+  font-size: 0.82rem;
+  line-height: 1.65;
+}
+
+.session-page .realtime-status {
+  font-size: 1.15rem;
+  color: #08122d;
+}
+
+.session-page .conversation-box {
+  padding: 22px 24px;
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+  border: 1px solid #dfe7f4;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.session-page .session-conversation-log {
+  min-height: 260px;
+  max-height: min(50vh, 520px);
+}
+
+.session-page .session-preview-window .audio-guard-toggle {
+  justify-content: center;
+  width: min(100%, 360px);
+}
+
+.session-page .conversation-heading {
+  margin-bottom: 14px;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
+.session-page .actions {
+  gap: 14px;
+}
+
+.session-page .actions button {
+  min-height: 52px;
+  padding-inline: 22px;
+}
+
+.session-page .session-actions button {
+  min-width: 180px;
 }
 
 .screen-label,
@@ -2530,7 +2777,6 @@ button {
   }
 
   .landing-hero-grid,
-  .feature-layout,
   .pricing-layout,
   .account-layout {
     grid-template-columns: 1fr;
@@ -2544,6 +2790,23 @@ button {
 
   .product-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1320px) {
+  .feature-layout {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .dashboard-preview {
+    width: min(900px, 100%);
+    margin: 0 auto;
+  }
+
+  .dashboard-panels {
+    grid-template-columns: 1fr;
+    gap: 16px;
   }
 }
 

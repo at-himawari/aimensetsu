@@ -1,14 +1,31 @@
 type HomeScreenProps = {
   creditBalanceMinutes: number;
   hasResume: boolean;
+  recentHistoryItems: Array<{
+    id: string;
+    previewTitle: string;
+    previewMeta: string;
+  }>;
+  isHistoryLoading?: boolean;
   onStartPractice: () => void;
   onAddCredits: () => void;
   onMove: (screen: "resume" | "history" | "billing") => void;
+  onOpenHistory: (id: string) => void;
 };
 
 
-export function HomeScreen({ creditBalanceMinutes, hasResume, onStartPractice, onAddCredits, onMove }: HomeScreenProps) {
+export function HomeScreen({
+  creditBalanceMinutes,
+  hasResume,
+  recentHistoryItems,
+  isHistoryLoading = false,
+  onStartPractice,
+  onAddCredits,
+  onMove,
+  onOpenHistory,
+}: HomeScreenProps) {
   const cannotStartPractice = creditBalanceMinutes <= 0;
+  const visibleHistoryItems = recentHistoryItems.slice(0, 3);
 
   return (
     <section className="screen-card home-screen">
@@ -64,18 +81,18 @@ export function HomeScreen({ creditBalanceMinutes, hasResume, onStartPractice, o
                   すべて見る
                 </button>
               </div>
-              <button className="history-preview-item" type="button" onClick={() => onMove("history")}>
-                <span>総合職_面接練習</span>
-                <small>2024/05/20　26分</small>
-              </button>
-              <button className="history-preview-item" type="button" onClick={() => onMove("history")}>
-                <span>マーケター職_想定面接</span>
-                <small>2024/05/18　18分</small>
-              </button>
-              <button className="history-preview-item" type="button" onClick={() => onMove("history")}>
-                <span>プロダクト職_一次面接</span>
-                <small>2024/05/16　31分</small>
-              </button>
+              {visibleHistoryItems.map((item) => (
+                <button className="history-preview-item" key={item.id} type="button" onClick={() => onOpenHistory(item.id)}>
+                  <span>{item.previewTitle}</span>
+                  <small>{item.previewMeta}</small>
+                </button>
+              ))}
+              {!isHistoryLoading && visibleHistoryItems.length === 0 ? (
+                <div className="empty-resume-state">表示できる履歴がありません。</div>
+              ) : null}
+              {isHistoryLoading && visibleHistoryItems.length === 0 ? (
+                <div className="empty-resume-state">履歴を読み込んでいます。</div>
+              ) : null}
             </section>
 
             <button className="secondary-button billing-shortcut" onClick={() => onMove("billing")}>
