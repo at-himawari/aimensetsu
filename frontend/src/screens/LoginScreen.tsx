@@ -16,6 +16,7 @@ type LoginScreenProps = {
   isCognitoConfigured?: boolean;
   isLoading?: boolean;
   errorMessage?: string | null;
+  demoLoginLabel?: string;
 };
 
 function formatCodeDeliveryMessage(details?: CognitoCodeDeliveryDetails) {
@@ -30,7 +31,7 @@ function formatCodeDeliveryMessage(details?: CognitoCodeDeliveryDetails) {
       ? `確認コードをSMS（${destination}）に送信しました。`
       : "確認コードをSMSに送信しました。";
   }
-  return "確認コードを送信しました。届かない場合は、Cognitoのメール確認設定を確認してください。";
+  return "確認コードを送信しました。届かない場合は、メール確認の設定を確認してください。";
 }
 
 
@@ -46,6 +47,7 @@ export function LoginScreen({
   isCognitoConfigured = false,
   isLoading = false,
   errorMessage = null,
+  demoLoginLabel = "無料体験を始める",
 }: LoginScreenProps) {
   const storedConfirmationEmail = window.localStorage.getItem(PENDING_CONFIRMATION_EMAIL_KEY) ?? "";
   const [mode, setMode] = useState<"login" | "signup" | "confirm" | "reset" | "reset-confirm">(
@@ -159,7 +161,7 @@ export function LoginScreen({
       <p>
         {authMode === "cognito"
           ? "練習履歴と振り返りを保存して、次の面接準備につなげましょう。"
-          : "開発中はデモログインからすぐに主要機能へ入れます。"}
+          : "無料体験として、すぐに面接練習を始められます。"}
       </p>
       {errorMessage ? (
         <p className="inline-error" role="alert" aria-live="assertive">
@@ -370,7 +372,7 @@ export function LoginScreen({
       ) : (
         <div className="login-actions">
           <button className="primary-button" onClick={onDemoLogin} disabled={isLoading}>
-            {isLoading ? "ログイン中" : "デモログインで開始"}
+            {isLoading ? "ログイン中" : demoLoginLabel}
           </button>
         </div>
       )}

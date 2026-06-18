@@ -179,7 +179,7 @@ describe("App", () => {
     );
 
     expect(screen.getByRole("heading", { name: "ログイン" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+    await user.click(screen.getByRole("button", { name: "無料体験を始める" }));
     expect(await screen.findByRole("heading", { name: "ホーム" })).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith(
       "/api/auth/demo-login",
@@ -217,16 +217,16 @@ describe("App", () => {
       </AuthProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+    await user.click(screen.getByRole("button", { name: "無料体験を始める" }));
     await screen.findByRole("heading", { name: "ホーム" });
-    await user.click(screen.getByRole("button", { name: "履歴を見る" }));
+    await user.click(screen.getByRole("button", { name: "すべて見る" }));
     await user.click(screen.getByRole("button", { name: "2026-04-24 Backend Engineer 模擬面接" }));
 
     expect(screen.getByRole("heading", { name: "履歴" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 3, name: "2026-04-24 Backend Engineer 模擬面接" })).toBeInTheDocument();
-    expect(screen.getByText("表示中: 2 件")).toBeInTheDocument();
+    expect(screen.getByText("面接練習の記録を 2 件表示しています。")).toBeInTheDocument();
     expect(screen.getByText("振り返りコメント")).toBeInTheDocument();
-    expect(screen.getAllByText("AI面接コーチ")).toHaveLength(2);
+    expect(screen.getAllByText("AI面接コーチ")).toHaveLength(3);
     expect(screen.getByText("これまでのご経歴を教えてください。")).toBeInTheDocument();
     expect(screen.queryByText("決済処理のボトルネックを見直し、失敗率を大きく下げました。")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "会話履歴をすべて見る" }));
@@ -253,7 +253,7 @@ describe("App", () => {
       </AuthProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+    await user.click(screen.getByRole("button", { name: "無料体験を始める" }));
     await screen.findByRole("heading", { name: "ホーム" });
     await user.click(screen.getByRole("button", { name: "経歴書を管理する" }));
     await user.click(screen.getAllByRole("button", { name: "削除" })[0]);
@@ -276,7 +276,7 @@ describe("App", () => {
       </AuthProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+    await user.click(screen.getByRole("button", { name: "無料体験を始める" }));
     await screen.findByRole("heading", { name: "ホーム" });
     await user.click(screen.getByRole("button", { name: "経歴書を管理する" }));
     await user.click(screen.getAllByRole("button", { name: "削除" })[0]);
@@ -295,7 +295,7 @@ describe("App", () => {
       </AuthProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+    await user.click(screen.getByRole("button", { name: "無料体験を始める" }));
     await screen.findByRole("heading", { name: "ホーム" });
     await user.click(screen.getByRole("button", { name: "経歴書を管理する" }));
     await user.click(screen.getAllByRole("button", { name: "削除" })[0]);
@@ -317,7 +317,7 @@ describe("App", () => {
       </AuthProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+    await user.click(screen.getByRole("button", { name: "無料体験を始める" }));
     await screen.findByRole("heading", { name: "ホーム" });
     await user.click(screen.getByRole("button", { name: "経歴書を管理する" }));
 
@@ -441,9 +441,9 @@ describe("App", () => {
       </AuthProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+    await user.click(screen.getByRole("button", { name: "無料体験を始める" }));
     await screen.findByRole("heading", { name: "ホーム" });
-    await user.click(screen.getByRole("button", { name: "履歴を見る" }));
+    await user.click(screen.getByRole("button", { name: "すべて見る" }));
 
     expect(await screen.findByRole("button", { name: "2026/05/10 Product Manager" })).toBeInTheDocument();
     expect(await screen.findByText("プロダクト改善の経験を話したいです。")).toBeInTheDocument();
@@ -468,7 +468,7 @@ describe("App", () => {
       </AuthProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+    await user.click(screen.getByRole("button", { name: "無料体験を始める" }));
     expect(await screen.findByLabelText("残クレジット: 30分")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "追加購入する" }));
@@ -603,7 +603,7 @@ describe("App", () => {
       </AuthProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+    await user.click(screen.getByRole("button", { name: "無料体験を始める" }));
 
     const startButton = await screen.findByRole("button", { name: "クレジットを追加して始める" });
     expect(startButton).toBeEnabled();
@@ -619,7 +619,7 @@ describe("App", () => {
       </AuthProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+    await user.click(screen.getByRole("button", { name: "無料体験を始める" }));
     await screen.findByRole("heading", { name: "ホーム" });
     await user.click(screen.getByRole("button", { name: "経歴書を管理する" }));
     await user.click(screen.getAllByRole("button", { name: "削除" })[0]);
@@ -641,7 +641,7 @@ describe("App", () => {
       </AuthProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+    await user.click(screen.getByRole("button", { name: "無料体験を始める" }));
     await screen.findByRole("heading", { name: "ホーム" });
     await user.click(screen.getByRole("button", { name: "経歴書を管理する" }));
     await user.click(screen.getAllByRole("button", { name: "削除" })[0]);
@@ -663,7 +663,7 @@ describe("App", () => {
       </AuthProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "デモログインで開始" }));
+    await user.click(screen.getByRole("button", { name: "無料体験を始める" }));
     await screen.findByRole("heading", { name: "ホーム" });
     await user.click(screen.getByRole("button", { name: "メニューを開く" }));
     expect(screen.getByRole("menuitem", { name: "ログアウト" })).toBeInTheDocument();

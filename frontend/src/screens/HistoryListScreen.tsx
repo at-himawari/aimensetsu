@@ -70,34 +70,52 @@ export function HistoryListScreen({
   };
 
   return (
-    <section className="screen-card">
-      <p className="screen-label">History</p>
-      <h2>履歴</h2>
-      <p className="section-note">
-        {isLoading
-          ? "履歴を読み込んでいます。"
-          : isLimited
-          ? `履歴は新しい順に ${maxVisibleItems} 件まで表示しています。`
-          : `表示中: ${visibleItems.length} 件`}
-      </p>
-      {errorMessage ? <p className="form-error">{errorMessage}</p> : null}
-      <div className="mock-list">
-        {visibleItems.map((item) => (
-          <button
-            key={item.id}
-            className={selectedEntry?.id === item.id ? "list-item-button selected-button" : "list-item-button"}
-            onClick={() => onOpenDetail(item.id)}
-          >
-            {item.title}
-          </button>
-        ))}
-        {items.length === 0 ? <div>表示できる履歴がありません。</div> : null}
-      </div>
+    <section className="screen-card history-screen">
+      <header className="detail-screen-header history-header">
+        <div>
+          <p className="screen-label">History</p>
+          <h2>履歴</h2>
+          <p>
+            {isLoading
+              ? "履歴を読み込んでいます。"
+              : isLimited
+              ? `新しい順に ${maxVisibleItems} 件まで表示しています。`
+              : `面接練習の記録を ${visibleItems.length} 件表示しています。`}
+          </p>
+        </div>
+      </header>
 
-      {selectedEntry ? (
-        <section className="history-detail-panel">
-          <h3>{selectedEntry.title}</h3>
-          <p>セッション情報、会話履歴、振り返りをまとめて確認できます。</p>
+      <div className="history-layout">
+        <section className="history-list-panel">
+          <div className="panel-title-row">
+            <h3>練習履歴</h3>
+            <span>{visibleItems.length} 件</span>
+          </div>
+          {errorMessage && visibleItems.length === 0 ? <p className="inline-error">{errorMessage}</p> : null}
+          <div className="history-list">
+            {visibleItems.map((item) => (
+              <button
+                key={item.id}
+                className={selectedEntry?.id === item.id ? "history-list-item active" : "history-list-item"}
+                onClick={() => onOpenDetail(item.id)}
+                aria-label={item.title}
+              >
+                <span>{item.title}</span>
+                <small aria-hidden="true">詳細を見る</small>
+              </button>
+            ))}
+            {items.length === 0 ? <div className="empty-resume-state">表示できる履歴がありません。</div> : null}
+          </div>
+        </section>
+
+        {selectedEntry ? (
+          <section className="history-detail-panel">
+            <div className="panel-title-row">
+              <div>
+                <h3>{selectedEntry.title}</h3>
+                <p>会話ログと振り返りをまとめて確認できます。</p>
+              </div>
+            </div>
           <div className="conversation-box">
             {transcriptLines.length > 0 ? transcriptLines.map((line) => {
               const item = parseTranscriptLine(line);
@@ -114,7 +132,7 @@ export function HistoryListScreen({
                 className="utility-link-button"
                 onClick={() => setIsTranscriptExpanded((current) => !current)}
               >
-                {isTranscriptExpanded ? "短く表示する" : "会話履歴をすべて見る"}
+              {isTranscriptExpanded ? "短く表示する" : "会話履歴をすべて見る"}
               </button>
             ) : null}
           </div>
@@ -139,23 +157,30 @@ export function HistoryListScreen({
               </section>
             </div>
           </div>
-          <div className="actions">
-            <button className="secondary-button" onClick={onBack}>
-              ホームへ戻る
-            </button>
+        </section>
+        ) : (
+          <section className="history-detail-panel empty-history-detail">
+            <h3>履歴を選択してください</h3>
+            <p>左の一覧から練習履歴を選ぶと、会話ログと振り返りを確認できます。</p>
+          </section>
+        )}
+      </div>
+
+      <div className="detail-screen-actions">
+        <button className="secondary-button" onClick={onBack}>
+          ホームへ戻る
+        </button>
+        {selectedEntry ? (
+          <>
             <button className="secondary-button danger-button" onClick={onDelete}>
               履歴を削除
             </button>
             <button className="primary-button" onClick={onRestart}>
               もう一度練習
             </button>
-          </div>
-        </section>
-      ) : (
-        <button className="secondary-button" onClick={onBack}>
-          ホームへ戻る
-        </button>
-      )}
+          </>
+        ) : null}
+      </div>
     </section>
   );
 }

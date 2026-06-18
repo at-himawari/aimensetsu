@@ -53,6 +53,9 @@ type RealtimeEventPayload = {
   };
 };
 
+const CLOUD_RUN_WAIT_NOTICE_DELAY_MS = 2500;
+const CLOUD_RUN_WAIT_NOTICE_MESSAGE = "バックエンドを起動しています。初回アクセスでは数十秒かかる場合があります。このままお待ちください。";
+
 
 export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }: SessionScreenProps) {
   const { authState } = useAuth();
@@ -67,6 +70,7 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
   const isAssistantSpeakingRef = useRef(false);
   const assistantSpeechFallbackTimeoutRef = useRef<number | null>(null);
   const assistantMuteReleaseTimeoutRef = useRef<number | null>(null);
+  const cloudRunWaitNoticeTimeoutRef = useRef<number | null>(null);
   const [status, setStatus] = useState<RealtimeStatus>("idle");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -78,6 +82,7 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
   const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(false);
   const [shouldMuteDuringAssistantSpeech, setShouldMuteDuringAssistantSpeech] = useState(true);
   const [shouldIgnoreResume, setShouldIgnoreResume] = useState(false);
+  const [isFinishing, setIsFinishing] = useState(false);
 
   useEffect(() => {
     setShouldIgnoreResume(false);
@@ -90,6 +95,21 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
   const updateConnectionStep = (message: string) => {
     setConnectionStep(message);
     appendEvent(message);
+  };
+
+  const clearCloudRunWaitNotice = () => {
+    if (cloudRunWaitNoticeTimeoutRef.current !== null) {
+      window.clearTimeout(cloudRunWaitNoticeTimeoutRef.current);
+      cloudRunWaitNoticeTimeoutRef.current = null;
+    }
+  };
+
+  const scheduleCloudRunWaitNotice = () => {
+    clearCloudRunWaitNotice();
+    cloudRunWaitNoticeTimeoutRef.current = window.setTimeout(() => {
+      updateConnectionStep(CLOUD_RUN_WAIT_NOTICE_MESSAGE);
+      cloudRunWaitNoticeTimeoutRef.current = null;
+    }, CLOUD_RUN_WAIT_NOTICE_DELAY_MS);
   };
 
   useEffect(() => {
@@ -107,6 +127,7 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
 
   useEffect(() => {
     return () => {
+      clearCloudRunWaitNotice();
       if (assistantSpeechFallbackTimeoutRef.current !== null) {
         window.clearTimeout(assistantSpeechFallbackTimeoutRef.current);
       }
@@ -337,25 +358,75 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
     });
 
     const requestedResumeId = shouldIgnoreResume ? null : resumeId;
-    let response = await createSession(requestedResumeId);
-    if (!response.ok && requestedResumeId) {
-      const body = await response.json().catch(() => null);
-      if (body?.error?.code === "NOT_FOUND") {
-        setShouldIgnoreResume(true);
-        updateConnectionStep("選択中の職務経歴書が見つからないため、職務経歴書なしで開始します。");
-        response = await createSession(null);
-      } else {
+    scheduleCloudRunWaitNotice();
+    try {
+      let response = await createSession(requestedResumeId);
+      if (!response.ok && requestedResumeId) {
+        const body = await response.json().catch(() => null);
+        if (body?.error?.code === "NOT_FOUND") {
+          setShouldIgnoreResume(true);
+          updateConnectionStep("選択中の職務経歴書が見つからないため、職務経歴書なしで開始します。");
+          response = await createSession(null);
+        } else {
+          throw new Error(body?.error?.message ?? "面接セッションを開始できませんでした。");
+        }
+      }
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
         throw new Error(body?.error?.message ?? "面接セッションを開始できませんでした。");
       }
-    }
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      throw new Error(body?.error?.message ?? "面接セッションを開始できませんでした。");
+      const body = (await response.json()) as SessionCreateResponse;
+      return body.data.session_id;
+    } finally {
+      clearCloudRunWaitNotice();
     }
+  };
 
-    const body = (await response.json()) as SessionCreateResponse;
-    return body.data.session_id;
+  const createRealtimeCall = async (nextSessionId: string, sdp: string) => {
+    const headers = authHeaders();
+    headers.set("Content-Type", "application/sdp");
+    scheduleCloudRunWaitNotice();
+    try {
+      const response = await fetch(buildApiUrl(`/api/interview-sessions/${nextSessionId}/realtime-call`), {
+        method: "POST",
+        headers,
+        body: sdp,
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error?.message ?? "Realtime接続に失敗しました。");
+      }
+
+      return response.text();
+    } finally {
+      clearCloudRunWaitNotice();
+    }
+  };
+
+  const generateReflection = async (currentSessionId: string) => {
+    const headers = authHeaders();
+    await fetch(buildApiUrl(`/api/interview-sessions/${currentSessionId}/complete`), {
+      method: "POST",
+      headers,
+    }).catch(() => undefined);
+
+    scheduleCloudRunWaitNotice();
+    try {
+      const reflectionResponse = await fetch(buildApiUrl(`/api/interview-sessions/${currentSessionId}/reflection`), {
+        method: "POST",
+        headers,
+      }).catch(() => undefined);
+      if (reflectionResponse?.ok) {
+        const body = await reflectionResponse.json().catch(() => null);
+        return body?.data ?? null;
+      }
+      return null;
+    } finally {
+      clearCloudRunWaitNotice();
+    }
   };
 
   const startInterview = async () => {
@@ -432,20 +503,7 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
       await peer.setLocalDescription(offer);
       updateConnectionStep("AI音声セッションへ接続しています。");
 
-      const headers = authHeaders();
-      headers.set("Content-Type", "application/sdp");
-      const response = await fetch(buildApiUrl(`/api/interview-sessions/${nextSessionId}/realtime-call`), {
-        method: "POST",
-        headers,
-        body: offer.sdp ?? "",
-      });
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.error?.message ?? "Realtime接続に失敗しました。");
-      }
-
-      const answerSdp = await response.text();
+      const answerSdp = await createRealtimeCall(nextSessionId, offer.sdp ?? "");
       updateConnectionStep("接続応答を受け取り、音声を開始しています。");
       await peer.setRemoteDescription({ type: "answer", sdp: answerSdp });
       setStatus("connected");
@@ -460,6 +518,7 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
   };
 
   const stopInterviewAudio = () => {
+    clearCloudRunWaitNotice();
     if (assistantSpeechFallbackTimeoutRef.current !== null) {
       window.clearTimeout(assistantSpeechFallbackTimeoutRef.current);
       assistantSpeechFallbackTimeoutRef.current = null;
@@ -483,26 +542,20 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
   };
 
   const handleFinish = async () => {
+    setIsFinishing(true);
     stopInterviewAudio();
     const currentSessionId = sessionIdRef.current;
     let reflection: SessionReflection | null = null;
-    if (currentSessionId) {
-      await Promise.allSettled(pendingMessageSavesRef.current);
-      const headers = authHeaders();
-      await fetch(buildApiUrl(`/api/interview-sessions/${currentSessionId}/complete`), {
-        method: "POST",
-        headers,
-      }).catch(() => undefined);
-      const reflectionResponse = await fetch(buildApiUrl(`/api/interview-sessions/${currentSessionId}/reflection`), {
-        method: "POST",
-        headers,
-      }).catch(() => undefined);
-      if (reflectionResponse?.ok) {
-        const body = await reflectionResponse.json().catch(() => null);
-        reflection = body?.data ?? null;
+    try {
+      if (currentSessionId) {
+        await Promise.allSettled(pendingMessageSavesRef.current);
+        updateConnectionStep("面接結果を保存し、振り返りを生成しています。");
+        reflection = await generateReflection(currentSessionId);
       }
+      onFinish(reflection);
+    } finally {
+      setIsFinishing(false);
     }
-    onFinish(reflection);
   };
 
   const isStarting = status === "starting";
@@ -555,9 +608,9 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
       </div>
 
       {errorMessage ? <p className="inline-error">{errorMessage}</p> : null}
-      {isStarting ? (
+      {isStarting || isFinishing ? (
         <LoadingState
-          title="接続準備中"
+          title={isFinishing ? "面接結果を処理中" : "接続準備中"}
           body={connectionStep}
         />
       ) : null}
@@ -593,19 +646,19 @@ export function SessionScreen({ resumeId, resumeFileName, onFinish, onBilling }:
 
       <div className="actions">
         {!isConnected ? (
-          <button className="primary-button" onClick={startInterview} disabled={isStarting}>
+          <button className="primary-button" onClick={startInterview} disabled={isStarting || isFinishing}>
             {isStarting ? "接続中" : "面接を開始する"}
           </button>
         ) : (
-          <button className="secondary-button" onClick={stopInterviewAudio}>
+          <button className="secondary-button" onClick={stopInterviewAudio} disabled={isFinishing}>
             音声を停止する
           </button>
         )}
-        <button className="secondary-button" onClick={onBilling}>
+        <button className="secondary-button" onClick={onBilling} disabled={isFinishing}>
           クレジット追加
         </button>
-        <button className="primary-button" onClick={handleFinish}>
-          面接を終了する
+        <button className="primary-button" onClick={handleFinish} disabled={isFinishing}>
+          {isFinishing ? "終了処理中" : "面接を終了する"}
         </button>
       </div>
     </section>

@@ -146,6 +146,325 @@ function mapResumeFile(resume: ResumeFile): ResumeItem {
   };
 }
 
+type LandingIconName =
+  | "sparkle"
+  | "resume"
+  | "voice"
+  | "feedback"
+  | "history"
+  | "credit"
+  | "device"
+  | "home"
+  | "practice"
+  | "shield"
+  | "lock"
+  | "payment";
+
+function LandingIcon({ name }: { name: LandingIconName }) {
+  const commonProps = {
+    viewBox: "0 0 24 24",
+    fill: "none",
+    xmlns: "http://www.w3.org/2000/svg",
+    "aria-hidden": true,
+  };
+
+  return (
+    <svg {...commonProps}>
+      {name === "sparkle" ? (
+        <>
+          <path d="M12 3.75 13.95 9 19.25 11 13.95 13 12 18.25 10.05 13 4.75 11 10.05 9 12 3.75Z" />
+          <path d="M18.2 4.8 18.85 6.35 20.4 7 18.85 7.65 18.2 9.2 17.55 7.65 16 7 17.55 6.35 18.2 4.8Z" />
+        </>
+      ) : null}
+      {name === "resume" ? (
+        <>
+          <path d="M7 3.75h6.25L17 7.5v12.75H7V3.75Z" />
+          <path d="M13 3.75V7.5h4" />
+          <path d="M9.4 11h5.2M9.4 14h5.2M9.4 17h3.2" />
+        </>
+      ) : null}
+      {name === "voice" ? (
+        <>
+          <path d="M12 4.25a3 3 0 0 0-3 3v4.25a3 3 0 0 0 6 0V7.25a3 3 0 0 0-3-3Z" />
+          <path d="M6.75 10.75v.75a5.25 5.25 0 0 0 10.5 0v-.75M12 16.75v3M9.25 19.75h5.5" />
+        </>
+      ) : null}
+      {name === "feedback" ? (
+        <>
+          <path d="M5.25 5.25h13.5v9.5H12l-4.25 4v-4h-2.5v-9.5Z" />
+          <path d="m9 10.1 1.9 1.9L15.25 8" />
+        </>
+      ) : null}
+      {name === "history" ? (
+        <>
+          <path d="M5.25 12a6.75 6.75 0 1 0 2-4.8" />
+          <path d="M5.25 6.25v3.5h3.5M12 8.25v4l2.65 1.55" />
+        </>
+      ) : null}
+      {name === "credit" ? (
+        <>
+          <path d="M4.75 7.25h14.5v9.5H4.75v-9.5Z" />
+          <path d="M4.75 10h14.5M8 14h2.25M13.25 14h2.75" />
+        </>
+      ) : null}
+      {name === "device" ? (
+        <>
+          <path d="M4.75 6.25h10.5v8H4.75v-8ZM8.5 18.25h3M10 14.25v4" />
+          <path d="M17 9.25h2.25v9H17v-9Z" />
+        </>
+      ) : null}
+      {name === "home" ? (
+        <>
+          <path d="m4.75 11 7.25-6 7.25 6" />
+          <path d="M7 10.25v8h10v-8" />
+          <path d="M10 18.25v-4h4v4" />
+        </>
+      ) : null}
+      {name === "practice" ? (
+        <>
+          <path d="M6.25 6.5h11.5v8H9.5l-3.25 3v-11Z" />
+          <path d="M9 9.5h6M9 12h4.25" />
+        </>
+      ) : null}
+      {name === "shield" ? (
+        <>
+          <path d="M12 3.75 18.25 6v5.25c0 4-2.55 7.35-6.25 9-3.7-1.65-6.25-5-6.25-9V6L12 3.75Z" />
+          <path d="m9.25 12.1 1.85 1.85 3.85-4" />
+        </>
+      ) : null}
+      {name === "lock" ? (
+        <>
+          <path d="M6.5 10.5h11v8.25h-11V10.5Z" />
+          <path d="M8.75 10.5V8.25a3.25 3.25 0 0 1 6.5 0v2.25" />
+          <path d="M12 14v1.5" />
+        </>
+      ) : null}
+      {name === "payment" ? (
+        <>
+          <path d="M4.75 7.5h14.5v9H4.75v-9Z" />
+          <path d="M4.75 10h14.5" />
+          <path d="M8 14h3M14.5 14h1.5" />
+        </>
+      ) : null}
+    </svg>
+  );
+}
+
+const heroBenefits: Array<{ icon: LandingIconName; label: string }> = [
+  { icon: "resume", label: "あなたの経歴から最適な質問を生成" },
+  { icon: "voice", label: "音声でリアルな面接練習を実現" },
+  { icon: "feedback", label: "AIのフィードバックで着実にレベルアップ" },
+];
+
+function ProductPreview() {
+  return (
+    <section className="product-preview" aria-label="面接練習画面のプレビュー">
+      <div className="preview-window">
+        <div className="preview-window-header">
+          <strong>面接練習中</strong>
+          <div className="preview-window-actions" aria-hidden="true">
+            <span>残り時間 24:36</span>
+            <span>練習を終了</span>
+          </div>
+        </div>
+        <div className="preview-layout">
+          <div className="preview-main">
+            <div className="preview-message">
+              <span className="preview-avatar">AI</span>
+              <p>これまでのご経験の中で、最も成果を上げたプロジェクトについて教えてください。</p>
+            </div>
+            <div className="preview-answer">
+              <strong>あなたの回答</strong>
+              <span />
+              <span />
+              <span />
+            </div>
+            <div className="preview-thinking">
+              <span aria-hidden="true"><LandingIcon name="feedback" /></span>
+              AIが考えています...
+            </div>
+            <div className="preview-mic">
+              <span aria-hidden="true"><LandingIcon name="voice" /></span>
+              <strong>クリックして話す</strong>
+              <small>AI応答中は自動でミュートになります</small>
+            </div>
+          </div>
+          <aside className="preview-log">
+            <strong>対話ログ</strong>
+            <p>AI面接官</p>
+            <span>これまでのご経験の中で...</span>
+            <p>あなた</p>
+            <span>音声で回答中</span>
+            <p>AI面接官</p>
+            <span>その取り組みの中で難しかった点は...</span>
+          </aside>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const featureCards: Array<{ icon: LandingIconName; title: string; body: string }> = [
+  { icon: "resume", title: "職務経歴書をもとにパーソナライズ質問", body: "あなたの経歴情報をAIが分析し、企業・職種に合わせた質問を生成。" },
+  { icon: "voice", title: "リアルな音声対話", body: "マイクを使った自然な会話で、本番に近い練習が可能。" },
+  { icon: "feedback", title: "AIによる振り返り", body: "良かった点・改善点・次回アドバイスをAIが客観的にフィードバック。" },
+  { icon: "history", title: "練習履歴の管理", body: "すべての面接履歴を保存し、振り返りや前回の把握に役立ちます。" },
+  { icon: "credit", title: "クレジット制で安心", body: "初回無料クレジット付き。使った分だけ、明確な料金体系。" },
+  { icon: "device", title: "いつでもどこでも", body: "PC・スマートフォンどちらでも、スキマ時間に集中して練習。" },
+];
+
+const workflowSteps = [
+  ["1", "職務経歴書を登録", "PDFをアップロードすると、AIが内容を解析・保存します。"],
+  ["2", "面接練習を開始", "あなたの経歴に合わせた質問で練習をスタート。"],
+  ["3", "AIと音声で対話", "マイクを使って回答。AIがリアルタイムで応答。"],
+  ["4", "振り返りを確認", "良かった点・改善点・次のアクションを確認。"],
+  ["5", "次の面接に活かす", "改善を重ねて、自信を持って本番に臨みましょう。"],
+];
+
+function HomeDashboardPreview() {
+  return (
+    <section className="dashboard-preview" aria-label="ホーム画面のプレビュー">
+      <aside>
+        <strong><img className="dashboard-brand-logo" src="/favicon.png" alt="" aria-hidden="true" />AI面接コーチ</strong>
+        <span><LandingIcon name="home" />ホーム</span>
+        <span><LandingIcon name="practice" />面接練習</span>
+        <span><LandingIcon name="history" />履歴</span>
+        <span><LandingIcon name="resume" />職務経歴書</span>
+        <span><LandingIcon name="credit" />クレジット・課金</span>
+      </aside>
+      <div className="dashboard-main">
+        <h3>ホーム</h3>
+        <div className="dashboard-panels">
+          <section>
+            <strong>面接練習を開始する</strong>
+            <p>職務経歴書に基づいた質問で、AI面接官と練習しましょう。</p>
+            <span>新しい面接練習を始める</span>
+          </section>
+          <section>
+            <strong>残りクレジット</strong>
+            <p><b>12.5</b> クレジット</p>
+          </section>
+          <section>
+            <strong>職務経歴書が未登録です</strong>
+            <p>より精度の高い質問生成のために、職務経歴書を登録してください。</p>
+          </section>
+          <section>
+            <strong>最近の履歴</strong>
+            <p>総合職_面接練習 26分</p>
+            <p>マーケター職_想定面接 18分</p>
+          </section>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LandingSections() {
+  return (
+    <>
+      <section className="landing-band feature-band" id="features">
+        <div className="landing-section-inner feature-layout">
+          <div>
+            <h2>すべてが、面接力の向上につながる</h2>
+            <div className="feature-grid">
+              {featureCards.map(({ icon, title, body }) => (
+                <article className="feature-card" key={title}>
+                  <span aria-hidden="true"><LandingIcon name={icon} /></span>
+                  <h3>{title}</h3>
+                  <p>{body}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+          <HomeDashboardPreview />
+        </div>
+      </section>
+      <section className="landing-band workflow-band" id="how-to-use">
+        <div className="landing-section-inner">
+          <h2>使い方はシンプル、効果は本格的</h2>
+          <div className="workflow-grid">
+            {workflowSteps.map(([number, title, body]) => (
+              <article className="workflow-step" key={title}>
+                <span>{number}</span>
+                <h3>{title}</h3>
+                <p>{body}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+      <section className="landing-band product-band">
+        <div className="landing-section-inner product-cards">
+          <article>
+            <h3>職務経歴書管理</h3>
+            <div className="mini-file-list">
+              <span>職務経歴書_2024.pdf</span>
+              <span>職務経歴書_エンジニア.pdf</span>
+            </div>
+            <p>ファイルはAmazon Web Service上で安全に保存され、テキストを自動で抽出・解析します。</p>
+          </article>
+          <article>
+            <h3>面接練習画面</h3>
+            <div className="mini-dialog">
+              <strong>AI面接官</strong>
+              <p>あなたがチームで意見が対立した際、どのように合意形成を図りましたか?</p>
+            </div>
+            <p>AIの発話中は自動でミュート。集中できる録音体験を提供します。</p>
+          </article>
+          <article>
+            <h3>振り返りレポート</h3>
+            <div className="mini-score">
+              <strong>78</strong>
+              <span>/ 100</span>
+            </div>
+            <p>AIが多角的に評価し、次につながる具体的な改善アドバイスを提示。</p>
+          </article>
+          <article>
+            <h3>履歴詳細</h3>
+            <div className="mini-dialog">
+              <strong>総合職_面接練習</strong>
+              <p>会話ログと振り返りをいつでも確認できます。</p>
+            </div>
+            <p>弱点の把握と改善に役立ちます。</p>
+          </article>
+        </div>
+      </section>
+      <section className="landing-band pricing-band" id="pricing">
+        <div className="landing-section-inner pricing-layout">
+          <div className="pricing-panel">
+            <h2>シンプルな料金体系</h2>
+            <div className="pricing-cards">
+              <article>
+                <span>初回無料クレジット</span>
+                <strong>10 クレジット</strong>
+                <p>約30分</p>
+              </article>
+              <article>
+                <span>通常プラン</span>
+                <strong>30分 300円</strong>
+                <p>必要な分だけ追加できます。</p>
+              </article>
+            </div>
+          </div>
+          <div className="security-panel">
+            <h2>安心・安全の仕組み</h2>
+            <div>
+              <span><LandingIcon name="shield" />Amazon Web Serviceで安全に本人確認</span>
+              <span><LandingIcon name="lock" />データは暗号化して安全な環境に保存</span>
+              <span><LandingIcon name="payment" />決済情報は安全な決済基盤で保護</span>
+            </div>
+          </div>
+          <div className="final-cta">
+            <h2>まずは無料で体験してみませんか?</h2>
+            <p>初回10クレジット付きで、すぐに面接練習を始められます。</p>
+            <a href="#account">無料で始める</a>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
 
 export default function App() {
   const { authState, loginDemo, setJwt, logout } = useAuth();
@@ -850,32 +1169,100 @@ export default function App() {
   };
 
   const shouldShowAuthenticatedChrome = isLoggedIn && screen !== "phone-setup";
+  const pageClassName = screen === "session"
+    ? "page-shell session-page"
+    : screen === "login"
+      ? "landing-page"
+      : screen === "phone-setup"
+        ? "page-shell login-page"
+        : "page-shell app-page";
 
   return (
-    <main className={screen === "session" ? "page-shell session-page" : screen === "login" || screen === "phone-setup" ? "page-shell login-page" : "page-shell app-page"}>
+    <main className={pageClassName}>
+      {screen === "login" ? (
+        <>
+          <section className="landing-hero" id="top">
+            <header className="landing-header">
+              <a className="brand-mark" href="#top" aria-label="AI面接コーチ ホーム">
+                <span className="brand-logo-image" aria-hidden="true"><img src="/favicon.png" alt="" /></span>
+                AI面接コーチ
+              </a>
+              <nav aria-label="主要ナビゲーション">
+                <a href="#features">機能</a>
+                <a href="#pricing">料金</a>
+                <a href="#how-to-use">使い方</a>
+                <a href="#account">よくある質問</a>
+              </nav>
+              <div className="landing-header-actions">
+                <a className="ghost-header-button" href="#account">ログイン</a>
+                <a className="header-cta-button" href="#account">無料で始める</a>
+              </div>
+            </header>
+            <div className="landing-hero-grid">
+              <section className="landing-copy" aria-labelledby="landing-title">
+                <h1 id="landing-title">AIと、想定を超える面接力を。</h1>
+                <p>あなたの経歴に合わせた本番さながらの面接練習と、客観的な振り返りで、内定への一歩を確実に。</p>
+                <div className="hero-benefits">
+                  {heroBenefits.map(({ icon, label }) => (
+                    <span key={label}>
+                      <i aria-hidden="true"><LandingIcon name={icon} /></i>
+                      {label}
+                    </span>
+                  ))}
+                </div>
+                <div className="hero-actions">
+                  {authMode === "demo" ? (
+                    <button className="primary-button hero-primary-link" onClick={handleDemoLogin} disabled={isLoading}>
+                      {isLoading ? "開始中" : "無料で始める"}
+                    </button>
+                  ) : (
+                    <a className="primary-button hero-primary-link" href="#account">無料で始める</a>
+                  )}
+                  <a className="secondary-button hero-secondary-link" href="#account">ログイン</a>
+                </div>
+              </section>
+              <ProductPreview />
+            </div>
+          </section>
+          <LandingSections />
+          <section className="landing-band account-band" id="account">
+            <div className="landing-section-inner account-layout">
+              <div>
+                <p className="eyebrow">Account</p>
+                <h2>すぐに練習を始める</h2>
+                <p>登録済みの方はログインしてください。初めての方は無料体験からすぐに面接練習を始められます。</p>
+              </div>
+              <LoginScreen
+                onDemoLogin={handleDemoLogin}
+                onPasswordLogin={handlePasswordLogin}
+                onSignUp={handleSignUp}
+                onConfirmSignUp={handleConfirmSignUp}
+                onResendConfirmationCode={handleResendConfirmationCode}
+                onForgotPassword={handleForgotPassword}
+                onConfirmForgotPassword={handleConfirmForgotPassword}
+                authMode={authMode}
+                isCognitoConfigured={Boolean(cognitoConfig)}
+                isLoading={isLoading}
+                errorMessage={loginError}
+                demoLoginLabel="無料体験を始める"
+              />
+            </div>
+          </section>
+          {isLoading ? (
+            <div className="landing-loading">
+              <LoadingState
+                title="読み込み中"
+                body="少し時間がかかる場合があります。画面はそのままでお待ちください。"
+              />
+            </div>
+          ) : null}
+        </>
+      ) : null}
+      {screen !== "login" ? (
       <section className="hero-card">
         <p className="eyebrow">Interview Practice</p>
         <h1>AI面接コーチ</h1>
         <p className="lead">本番前に、納得いくまで面接練習を重ねられます。</p>
-        {screen === "login" ? (
-          <section className="top-features" aria-label="AI面接コーチの特徴">
-            <article className="top-feature-card">
-              <span className="top-feature-number">01</span>
-              <h2>経歴書に合わせた質問</h2>
-              <p>アップロードした内容をもとに、職種や経験に沿った面接練習ができます。</p>
-            </article>
-            <article className="top-feature-card">
-              <span className="top-feature-number">02</span>
-              <h2>ひとりで何度も練習</h2>
-              <p>声に出して答える練習を、時間を選ばず自分のペースで進められます。</p>
-            </article>
-            <article className="top-feature-card">
-              <span className="top-feature-number">03</span>
-              <h2>振り返りを保存</h2>
-              <p>良かった点と改善点を残し、次の練習で意識するポイントを明確にします。</p>
-            </article>
-          </section>
-        ) : null}
 
         {shouldShowAuthenticatedChrome ? (
           <div className="hero-toolbar">
@@ -926,22 +1313,45 @@ export default function App() {
           />
         ) : null}
 
-        <section className="screen-shell">
-          {screen === "login" ? (
-            <LoginScreen
-              onDemoLogin={handleDemoLogin}
-              onPasswordLogin={handlePasswordLogin}
-              onSignUp={handleSignUp}
-              onConfirmSignUp={handleConfirmSignUp}
-              onResendConfirmationCode={handleResendConfirmationCode}
-              onForgotPassword={handleForgotPassword}
-              onConfirmForgotPassword={handleConfirmForgotPassword}
-              authMode={authMode}
-              isCognitoConfigured={Boolean(cognitoConfig)}
-              isLoading={isLoading}
-              errorMessage={loginError}
-            />
+        <section className="app-auth-layout">
+          {shouldShowAuthenticatedChrome ? (
+            <aside className="app-sidebar" aria-label="アプリメニュー">
+              <strong>AI面接コーチ</strong>
+              <button
+                className={screen === "home" ? "app-sidebar-item active" : "app-sidebar-item"}
+                type="button"
+                onClick={() => navigateTo("home")}
+              >
+                ホーム
+              </button>
+              <button
+                className={screen === "resume" ? "app-sidebar-item active" : "app-sidebar-item"}
+                type="button"
+                onClick={() => navigateTo("resume")}
+              >
+                職務経歴書
+              </button>
+              <button
+                className={screen === "history" || screen === "reflection" ? "app-sidebar-item active" : "app-sidebar-item"}
+                type="button"
+                onClick={() => navigateTo("history")}
+              >
+                履歴
+              </button>
+              <button
+                className={screen === "billing" ? "app-sidebar-item active" : "app-sidebar-item"}
+                type="button"
+                onClick={() => navigateTo("billing")}
+              >
+                クレジット・課金
+              </button>
+              <button className="app-sidebar-item app-sidebar-logout" type="button" onClick={handleLogout}>
+                ログアウト
+              </button>
+            </aside>
           ) : null}
+
+        <section className="screen-shell">
           {screen === "phone-setup" ? (
             <PhoneSetupScreen
               onSendCode={handleSendPhoneCode}
@@ -1033,6 +1443,7 @@ export default function App() {
             />
           ) : null}
         </section>
+        </section>
         {isStartWithoutResumeDialogOpen ? (
           <div className="modal-backdrop" role="presentation">
             <section
@@ -1065,6 +1476,7 @@ export default function App() {
           </div>
         ) : null}
       </section>
+      ) : null}
       <footer className="app-footer" aria-label="Copyright">
         ©︎ 2026 Himawari Project
       </footer>

@@ -109,37 +109,72 @@ export function ResumeScreen({
   };
 
   return (
-    <section className="screen-card">
-      <p className="screen-label">Resume</p>
-      <h2>履歴書・職務経歴書アップロード</h2>
-      <p>PDF の登録状況を確認し、面接時に使う職務経歴書を管理します。</p>
-      <div className="mock-list">
-        {resumes.map((resume) => (
-          <div key={resume.id} className={selectedResumeId === resume.id ? "mock-list-item selected" : "mock-list-item"}>
-            <button className="list-item-button" onClick={() => onSelect(resume.id)} aria-label={resume.fileName}>
-              <span>{resume.fileName}</span>
-              <span className="list-item-meta" aria-hidden="true">
-                {resume.hasExtractedText ? "本文を読み込み済み" : "本文抽出なし"}
-              </span>
-            </button>
-            <button className="secondary-button danger-button" onClick={() => onDelete(resume.id)}>
-              削除
+    <section className="screen-card resume-screen">
+      <header className="detail-screen-header">
+        <div>
+          <p className="screen-label">Resume</p>
+          <h2>履歴書・職務経歴書アップロード</h2>
+          <p>PDF の登録状況を確認し、面接時に使う職務経歴書を管理します。</p>
+        </div>
+      </header>
+
+      <div className="resume-layout">
+        <section className="resume-panel">
+          <div className="panel-title-row">
+            <h3>職務経歴書</h3>
+            <span>{resumes.length} / {MAX_RESUME_FILES} 件</span>
+          </div>
+          <div className="mock-list resume-file-list">
+            {resumes.map((resume) => (
+              <div key={resume.id} className={selectedResumeId === resume.id ? "mock-list-item selected" : "mock-list-item"}>
+                <button className="list-item-button" onClick={() => onSelect(resume.id)} aria-label={resume.fileName}>
+                  <span>{resume.fileName}</span>
+                  <span className="list-item-meta" aria-hidden="true">
+                    {resume.hasExtractedText ? "本文を読み込み済み" : "本文抽出なし"}
+                  </span>
+                </button>
+                <button className="secondary-button danger-button" onClick={() => onDelete(resume.id)}>
+                  削除
+                </button>
+              </div>
+            ))}
+            {resumes.length === 0 ? (
+              <div className="empty-resume-state">
+                <strong>履歴書・職務経歴書はまだ登録されていません。</strong>
+                <p>PDFを追加すると、経歴に合わせた質問生成に利用できます。</p>
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="resume-panel upload-panel">
+          <h3>PDF を追加</h3>
+          <div className="form-stack">
+            <label className="file-dropzone" htmlFor={inputId}>
+              <span>ファイルを選択</span>
+              <small>PDF形式、最大{MAX_RESUME_FILE_SIZE_MB}MB</small>
+            </label>
+            <input
+              ref={inputRef}
+              id={inputId}
+              className="visually-hidden-file-input"
+              type="file"
+              accept="application/pdf,.pdf"
+              aria-label="PDF を追加"
+              onChange={handleFileChange}
+              disabled={hasReachedResumeLimit}
+            />
+            {selectedFile ? <p className="selected-file-name">選択中: {selectedFile.name}</p> : null}
+            {hasReachedResumeLimit ? <p className="section-note">登録できる履歴書・職務経歴書は2件までです。追加する場合は不要なPDFを削除してください。</p> : null}
+            {error || errorMessage ? <p className="inline-error">{error ?? errorMessage}</p> : null}
+            <button className="primary-button upload-button" onClick={handleUpload} disabled={isUploading || hasReachedResumeLimit}>
+              {isUploading ? "アップロード中" : "アップロードする"}
             </button>
           </div>
-        ))}
-        {resumes.length === 0 ? <div>履歴書・職務経歴書はまだ登録されていません。</div> : null}
+        </section>
       </div>
-      <div className="form-stack">
-        <label htmlFor={inputId}>PDF を追加</label>
-        <input ref={inputRef} id={inputId} type="file" accept="application/pdf,.pdf" onChange={handleFileChange} disabled={hasReachedResumeLimit} />
-        {selectedFile ? <p className="selected-file-name">選択中: {selectedFile.name}</p> : null}
-        {hasReachedResumeLimit ? <p className="section-note">登録できる履歴書・職務経歴書は2件までです。追加する場合は不要なPDFを削除してください。</p> : null}
-        {error || errorMessage ? <p className="inline-error">{error ?? errorMessage}</p> : null}
-        <button className="primary-button upload-button" onClick={handleUpload} disabled={isUploading || hasReachedResumeLimit}>
-          {isUploading ? "アップロード中" : "アップロードする"}
-        </button>
-      </div>
-      <div className="actions">
+
+      <div className="detail-screen-actions">
         <button className="secondary-button" onClick={onBack}>
           ホームへ戻る
         </button>

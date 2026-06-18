@@ -5,7 +5,7 @@ async function demoLogin(page: Page) {
   const loginResponse = page.waitForResponse(
     (response) => response.url().includes("/api/auth/demo-login") && response.status() === 200,
   );
-  await page.getByRole("button", { name: "デモログインで開始" }).click();
+  await page.getByRole("button", { name: "無料体験を始める" }).click();
   await loginResponse;
   await expect(page.getByRole("heading", { name: "ホーム" })).toBeVisible();
 }
@@ -46,7 +46,7 @@ test("履歴詳細を開いて削除できる", async ({ page }) => {
   await page.goto("/");
 
   await demoLogin(page);
-  await page.getByRole("button", { name: "履歴を見る" }).click();
+  await page.getByRole("button", { name: "すべて見る" }).click();
   await page.getByRole("button", { name: "2026-04-24 Backend Engineer 模擬面接" }).click();
 
   await expect(page.getByRole("heading", { name: "履歴" })).toBeVisible();
@@ -72,7 +72,7 @@ test("課金で購入すると残高へ反映される", async ({ page }) => {
 
   await expect(page.getByText("課金")).toBeVisible();
   await expect(page.getByText("現在残高: 30分")).toBeVisible();
-  await page.getByRole("button", { name: "Stripe Checkoutへ進む" }).click();
+  await page.getByRole("button", { name: "30分を追加購入する" }).click();
   await expect(page.getByText("現在残高: 60分")).toBeVisible();
 
   await page.getByRole("button", { name: "ホームへ戻る" }).click();

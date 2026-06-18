@@ -10,9 +10,14 @@ type BillingScreenProps = {
 export function BillingScreen({ availableMinutes, onBack, onPurchase, isLoading = false, errorMessage }: BillingScreenProps) {
   return (
     <section className="screen-card billing-screen">
-      <p className="screen-label">Billing</p>
-      <h2>練習時間を追加</h2>
-      <p>面接前にもう少し話す練習をしたいとき、30分単位で練習時間を追加できます。</p>
+      <header className="detail-screen-header billing-header">
+        <div>
+          <p className="screen-label">Billing</p>
+          <h2>練習時間を追加</h2>
+          <p>面接前にもう少し話す練習をしたいとき、30分単位で練習時間を追加できます。</p>
+        </div>
+      </header>
+
       <div className="billing-plan">
         <div className="billing-plan-main">
           <h3>30分追加パック</h3>
@@ -38,7 +43,7 @@ export function BillingScreen({ availableMinutes, onBack, onPurchase, isLoading 
         </div>
       </div>
       {errorMessage ? <p className="inline-error">{errorMessage}</p> : null}
-      <div className="actions">
+      <div className="detail-screen-actions">
         <button className="secondary-button" onClick={onBack}>
           ホームへ戻る
         </button>
