@@ -1226,7 +1226,7 @@ export default function App() {
             <div className="landing-hero-grid">
               <section className="landing-copy" aria-labelledby="landing-title">
                 <h1 id="landing-title">AIと、想定を超える<span className="nowrap-phrase">面接力を。</span></h1>
-                <p>あなたの経歴に合わせた本番さながらの面接練習と、客観的な振り返りで、内定への一歩を確実に。</p>
+                <p>一般的な質問ではなく、経歴・担当業務・実績に合わせて質問します。</p>
                 <div className="hero-benefits">
                   {heroBenefits.map(({ icon, label }) => (
                     <span key={label}>
