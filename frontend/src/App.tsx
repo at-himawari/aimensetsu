@@ -280,49 +280,16 @@ const heroBenefits: Array<{ icon: LandingIconName; label: string }> = [
 
 function ProductPreview() {
   return (
-    <section className="product-preview" aria-label="面接練習画面のプレビュー">
-      <div className="preview-window">
-        <div className="preview-window-header">
-          <strong>面接練習中</strong>
-          <div className="preview-window-actions" aria-hidden="true">
-            <span>残り時間 24:36</span>
-            <span>練習を終了</span>
-          </div>
-        </div>
-        <div className="preview-layout">
-          <div className="preview-main">
-            <div className="preview-message">
-              <span className="preview-avatar">AI</span>
-              <p>これまでのご経験の中で、最も成果を上げたプロジェクトについて教えてください。</p>
-            </div>
-            <div className="preview-answer">
-              <strong>あなたの回答</strong>
-              <span />
-              <span />
-              <span />
-            </div>
-            <div className="preview-thinking">
-              <span aria-hidden="true"><LandingIcon name="feedback" /></span>
-              AIが考えています...
-            </div>
-            <div className="preview-mic">
-              <span aria-hidden="true"><LandingIcon name="voice" /></span>
-              <strong>クリックして話す</strong>
-              <small>AI応答中は自動でミュートになります</small>
-            </div>
-          </div>
-          <aside className="preview-log">
-            <strong>対話ログ</strong>
-            <p>AI面接官</p>
-            <span>これまでのご経験の中で...</span>
-            <p>あなた</p>
-            <span>音声で回答中</span>
-            <p>AI面接官</p>
-            <span>その取り組みの中で難しかった点は...</span>
-          </aside>
-        </div>
-      </div>
-    </section>
+    <figure className="product-preview">
+      <img
+        src="/interview-session.jpg"
+        alt="AI面接コーチの実際の面接練習画面。AIからの質問、音声回答、マイクの自動ミュート、対話ログを確認できます。"
+        width="1800"
+        height="1127"
+        loading="eager"
+        decoding="async"
+      />
+    </figure>
   );
 }
 
@@ -355,39 +322,16 @@ const authenticatedSidebarItems: Array<{
 
 function HomeDashboardPreview() {
   return (
-    <section className="dashboard-preview" aria-label="ホーム画面のプレビュー">
-      <aside>
-        <strong><img className="dashboard-brand-logo" src="/favicon.png" alt="" aria-hidden="true" />AI面接コーチ</strong>
-        <span><LandingIcon name="home" />ホーム</span>
-        <span><LandingIcon name="practice" />面接練習</span>
-        <span><LandingIcon name="history" />履歴</span>
-        <span><LandingIcon name="resume" />職務経歴書</span>
-        <span><LandingIcon name="credit" />クレジット・課金</span>
-      </aside>
-      <div className="dashboard-main">
-        <h3>ホーム</h3>
-        <div className="dashboard-panels">
-          <section>
-            <strong>面接練習を開始する</strong>
-            <p>職務経歴書に基づいた質問で、AI面接官と練習しましょう。</p>
-            <span>新しい面接練習を始める</span>
-          </section>
-          <section>
-            <strong>残り練習時間</strong>
-            <p><b>60</b> 分</p>
-          </section>
-          <section>
-            <strong>職務経歴書が未登録です</strong>
-            <p>より精度の高い質問生成のために、職務経歴書を登録してください。</p>
-          </section>
-          <section>
-            <strong>最近の履歴</strong>
-            <p>総合職_面接練習 26分</p>
-            <p>マーケター職_想定面接 18分</p>
-          </section>
-        </div>
-      </div>
-    </section>
+    <figure className="dashboard-preview">
+      <img
+        src="/home-dashboard.jpg"
+        alt="AI面接コーチの実際のホーム画面。面接練習の開始、残りクレジット、職務経歴書、最近の履歴を確認できます。"
+        width="1800"
+        height="867"
+        loading="lazy"
+        decoding="async"
+      />
+    </figure>
   );
 }
 
